@@ -544,9 +544,14 @@ fun BreakdownTab(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Paid by ${payer?.name ?: "Unknown"} • ${dateFormatter.format(Date(expense.createdAt))}",
+                                    text = "Paid by ${payer?.name ?: "Unknown"}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = dateFormatter.format(Date(expense.createdAt)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
                                 )
                             }
                         }

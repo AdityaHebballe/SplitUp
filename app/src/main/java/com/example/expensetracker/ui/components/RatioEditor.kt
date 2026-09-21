@@ -95,7 +95,7 @@ fun RatioEditor(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "${String.format("%.1f", percentage)}% of expense",
+                                    text = "${String.format("%.1f", percentage)}%",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium

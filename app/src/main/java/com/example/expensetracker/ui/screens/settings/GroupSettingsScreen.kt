@@ -97,7 +97,7 @@ fun GroupSettingsScreen(
             }
 
             item {
-                Text("Members & Split Ratios", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Split Ratios", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
                 RatioEditor(
                     members = members,

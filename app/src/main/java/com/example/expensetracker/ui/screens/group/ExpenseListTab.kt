@@ -211,9 +211,14 @@ fun ExpenseListTab(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        text = "Paid by $payerName • $dateStr",
+                                        text = "Paid by $payerName",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = dateStr,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
                                     )
                                 }
                             }
