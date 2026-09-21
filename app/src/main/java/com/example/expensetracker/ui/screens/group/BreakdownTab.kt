@@ -2,9 +2,18 @@ package com.example.expensetracker.ui.screens.group
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,9 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.data.model.Expense
@@ -98,13 +109,13 @@ fun BreakdownTab(
     } else {
         val colorPalette = listOf(
             MaterialTheme.colorScheme.primary,
+            Color(0xFFFF8A65),
             MaterialTheme.colorScheme.tertiary,
-            MaterialTheme.colorScheme.secondary,
-            MaterialTheme.colorScheme.error,
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.outline
+            Color(0xFF26A69A),
+            Color(0xFFFFB74D),
+            Color(0xFFAB47BC),
+            Color(0xFF42A5F5),
+            Color(0xFFEC407A)
         )
 
         var selectedCategory by remember { mutableStateOf<String?>(null) }
@@ -148,10 +159,54 @@ fun BreakdownTab(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Donut Chart with Center Total
+                        // Donut Chart with Center Total & Touch Interaction
+                        val strokeWidth = 28.dp
+                        val popOffset = 10.dp
+
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(200.dp)
+                            modifier = Modifier
+                                .size(210.dp)
+                                .pointerInput(categorySpendings, selectedCategory) {
+                                    val strokeWidthPx = strokeWidth.toPx()
+                                    val popOffsetPx = popOffset.toPx()
+                                    val marginPx = 12.dp.toPx()
+                                    detectTapGestures { tapOffset ->
+                                        val center = Offset(size.width / 2f, size.height / 2f)
+                                        val dx = tapOffset.x - center.x
+                                        val dy = tapOffset.y - center.y
+                                        val dist = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                                        val minDim = minOf(size.width, size.height).toFloat()
+                                        val baseRadius = (minDim - strokeWidthPx - popOffsetPx * 2f) / 2f
+                                        val minR = baseRadius - strokeWidthPx / 2f - marginPx
+                                        val maxR = baseRadius + popOffsetPx + strokeWidthPx / 2f + marginPx
+
+                                        if (dist in minR..maxR) {
+                                            var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                            angle = (angle + 90f + 360f) % 360f
+
+                                            var cumulative = 0f
+                                            var tappedCategory: String? = null
+                                            for (item in categorySpendings) {
+                                                val sweep = (item.percentage / 100f) * 360f
+                                                if (angle >= cumulative && angle < cumulative + sweep) {
+                                                    tappedCategory = item.category
+                                                    break
+                                                }
+                                                cumulative += sweep
+                                            }
+                                            if (tappedCategory != null) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedCategory = if (selectedCategory == tappedCategory) null else tappedCategory
+                                            }
+                                        } else if (dist < minR) {
+                                            if (selectedCategory != null) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedCategory = null
+                                            }
+                                        }
+                                    }
+                                }
                         ) {
                             val animProgress = remember { Animatable(0f) }
                             LaunchedEffect(categorySpendings) {
@@ -164,48 +219,155 @@ fun BreakdownTab(
                                 )
                             }
 
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokeWidth = 32.dp.toPx()
-                                val radius = (size.minDimension - strokeWidth) / 2
-                                val topLeft = Offset(
-                                    (size.width - radius * 2) / 2,
-                                    (size.height - radius * 2) / 2
+                            val slicePops = categorySpendings.map { item ->
+                                val isSelected = selectedCategory == item.category
+                                animateFloatAsState(
+                                    targetValue = if (isSelected) 1f else 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    label = "slicePop_${item.category}"
                                 )
-                                val arcSize = Size(radius * 2, radius * 2)
+                            }
+                            val sliceAlphas = categorySpendings.map { item ->
+                                val isSelected = selectedCategory == item.category
+                                animateFloatAsState(
+                                    targetValue = if (selectedCategory == null || isSelected) 1f else 0.45f,
+                                    animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                    label = "sliceAlpha_${item.category}"
+                                )
+                            }
 
-                                var startAngle = -90f
-                                categorySpendings.forEachIndexed { index, item ->
-                                    val sweepAngle = (item.percentage / 100f) * 360f * animProgress.value
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokeWidthPx = strokeWidth.toPx()
+                                val popOffsetPx = popOffset.toPx()
+                                val baseRadius = (size.minDimension - strokeWidthPx - popOffsetPx * 2) / 2
+                                val center = Offset(size.width / 2, size.height / 2)
+
+                                val startAngles = FloatArray(categorySpendings.size)
+                                var currentStart = -90f
+                                categorySpendings.forEachIndexed { i, item ->
+                                    startAngles[i] = currentStart
+                                    currentStart += (item.percentage / 100f) * 360f
+                                }
+
+                                // Always draw unselected slices first, then the selected slice on top
+                                val unselectedIndices = categorySpendings.indices.filter { categorySpendings[it].category != selectedCategory }
+                                val selectedIdx = categorySpendings.indices.firstOrNull { categorySpendings[it].category == selectedCategory }
+                                val drawOrder = if (selectedIdx != null) unselectedIndices + selectedIdx else categorySpendings.indices.toList()
+
+                                drawOrder.forEach { index ->
+                                    val item = categorySpendings[index]
+                                    val fullSweep = (item.percentage / 100f) * 360f
                                     val sliceColor = colorPalette[index % colorPalette.size]
 
+                                    val radius = baseRadius + popOffsetPx * slicePops[index].value
+                                    val topLeft = Offset(center.x - radius, center.y - radius)
+                                    val arcSize = Size(radius * 2, radius * 2)
+
+                                    val capAngle = (strokeWidthPx / 2f / radius) * (180f / Math.PI.toFloat())
+                                    val targetGap = 5f
+                                    val maxDeduct = (fullSweep * 0.45f).coerceAtLeast(0f)
+                                    val totalDeduct = if (categorySpendings.size > 1) {
+                                        (capAngle * 2f + targetGap).coerceAtMost(maxDeduct)
+                                    } else 0f
+
+                                    val sweepAngle = (fullSweep * animProgress.value - totalDeduct).coerceAtLeast(0.1f)
+                                    val startAngle = startAngles[index] + totalDeduct / 2f
+
                                     drawArc(
-                                        color = sliceColor,
+                                        color = sliceColor.copy(alpha = sliceAlphas[index].value),
                                         startAngle = startAngle,
                                         sweepAngle = sweepAngle,
                                         useCenter = false,
                                         topLeft = topLeft,
                                         size = arcSize,
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                        style = Stroke(
+                                            width = strokeWidthPx,
+                                            cap = if (categorySpendings.size > 1) StrokeCap.Round else StrokeCap.Butt
+                                        )
                                     )
-                                    startAngle += sweepAngle
                                 }
                             }
 
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "Total Spent",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = CurrencyUtils.formatAmountStyled(
-                                        totalSpent,
-                                        currentCurrency,
-                                        symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ),
-                                    style = AmountStyleLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                            AnimatedContent(
+                                targetState = selectedCategory,
+                                transitionSpec = {
+                                    (fadeIn() + scaleIn(initialScale = 0.88f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.88f))
+                                },
+                                label = "donutCenterTransition"
+                            ) { targetCat ->
+                                if (targetCat == null) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(horizontal = 24.dp)
+                                    ) {
+                                        Text(
+                                            text = "Total Spent",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = CurrencyUtils.formatAmountStyled(
+                                                totalSpent,
+                                                currentCurrency,
+                                                symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            style = AmountStyleLarge,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${categorySpendings.size} categories",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                } else {
+                                    val item = categorySpendings.find { it.category == targetCat }
+                                    if (item != null) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.padding(horizontal = 24.dp)
+                                        ) {
+                                            Text(
+                                                text = "${item.icon} ${item.category}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = CurrencyUtils.formatAmountStyled(
+                                                    item.amount,
+                                                    currentCurrency,
+                                                    symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                ),
+                                                style = AmountStyleLarge,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surfaceContainerHighest
+                                            ) {
+                                                Text(
+                                                    text = "${String.format("%.1f", item.percentage)}% of total",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -216,21 +378,28 @@ fun BreakdownTab(
                             categorySpendings.forEachIndexed { index, item ->
                                 val sliceColor = colorPalette[index % colorPalette.size]
                                 val isSelected = selectedCategory == item.category
+                                val interactionSource = rememberPressInteractionSource()
 
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .pressScale(interactionSource)
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null
+                                        ) {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             selectedCategory = if (isSelected) null else item.category
                                         },
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer,
+                                    border = if (isSelected) BorderStroke(1.5.dp, sliceColor) else null,
+                                    shadowElevation = if (isSelected) 3.dp else 0.dp
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -246,7 +415,8 @@ fun BreakdownTab(
                                             Text(
                                                 text = "${item.icon} ${item.category}",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
 
@@ -256,12 +426,13 @@ fun BreakdownTab(
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                color = if (isSelected) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surfaceContainerHighest
                                             ) {
                                                 Text(
                                                     text = "${String.format("%.1f", item.percentage)}%",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
                                             }
