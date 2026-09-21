@@ -211,8 +211,8 @@ fun GroupSettingsScreen(
                                 viewModel.removeMember(member)
                             },
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                                contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
                             Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove")

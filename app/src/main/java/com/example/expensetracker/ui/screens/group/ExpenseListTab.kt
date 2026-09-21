@@ -124,8 +124,8 @@ fun ExpenseListTab(
                             FilledTonalIconButton(
                                 onClick = { expenseToDelete = expense },
                                 colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                                    contentColor = MaterialTheme.colorScheme.error
                                 )
                             ) {
                                 Icon(
