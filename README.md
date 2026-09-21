@@ -2,6 +2,8 @@
 
 An offline-first, multi-currency group expense sharing and split tracking Android app built with **Jetpack Compose** and crafted as a showcase for **Material 3 Expressive** design.
 
+[![Latest Release](https://img.shields.io/github/v/release/AdityaHebballe/SplitUp?label=Latest%20Release&color=blue)](https://github.com/AdityaHebballe/SplitUp/releases/latest)
+[![Download APK](https://img.shields.io/badge/Download-APK%20(v1.0)-success?logo=android)](https://github.com/AdityaHebballe/SplitUp/releases/download/v1.0/SplitUp-v1.0.apk)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-blue.svg?logo=kotlin)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-2025.02.00-green.svg?logo=android)](https://developer.android.com/jetpack/compose)
 [![Material 3 Expressive](https://img.shields.io/badge/Material%203-Expressive-purple.svg?logo=materialdesign)](https://m3.material.io)
