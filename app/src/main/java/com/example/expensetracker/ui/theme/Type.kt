@@ -1,9 +1,11 @@
 package com.example.expensetracker.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 val Typography = Typography(
@@ -138,3 +140,9 @@ val AmountStyleSmall = TextStyle(
     lineHeight = 20.sp,
     letterSpacing = 0.sp,
 )
+
+/** Standard corner radius for regular list/row cards throughout the app. */
+val CardShape = RoundedCornerShape(20.dp)
+
+/** Larger corner radius for hero/summary cards (totals, donut chart, etc). */
+val HeroCardShape = RoundedCornerShape(24.dp)

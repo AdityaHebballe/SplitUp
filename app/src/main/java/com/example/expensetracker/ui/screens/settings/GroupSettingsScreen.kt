@@ -30,6 +30,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.expensetracker.ui.components.pressScale
+import com.example.expensetracker.ui.components.rememberPressInteractionSource
+import com.example.expensetracker.ui.theme.CardShape
 import com.example.expensetracker.ui.components.CurrencyPicker
 import com.example.expensetracker.ui.components.RatioEditor
 
@@ -202,12 +205,15 @@ fun GroupSettingsScreen(
                             }
                             Text(member.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                         }
-                        IconButton(
+                        FilledTonalIconButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.removeMember(member)
                             },
-                            colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
                         ) {
                             Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove")
                         }
@@ -221,14 +227,17 @@ fun GroupSettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     members.forEach { member ->
                         val isSelected = member.id == group!!.defaultPayerMemberId
+                        val interactionSource = rememberPressInteractionSource()
                         ElevatedCard(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.updateDefaultPayer(member.id)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    viewModel.updateDefaultPayer(member.id)
-                                },
-                            shape = RoundedCornerShape(18.dp),
+                                .pressScale(interactionSource),
+                            interactionSource = interactionSource,
+                            shape = CardShape,
                             colors = CardDefaults.elevatedCardColors(
                                 containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                             )

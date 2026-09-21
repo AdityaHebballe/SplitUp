@@ -5,11 +5,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.expensetracker.domain.CurrencyUtils
+import com.example.expensetracker.ui.theme.LocalBalanceColors
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -20,9 +20,10 @@ fun BalanceCard(
     currencyCode: String,
     modifier: Modifier = Modifier
 ) {
+    val balanceColors = LocalBalanceColors.current
     val color = when {
-        netBalance > 0.009 -> Color(0xFF4CAF50) // Green
-        netBalance < -0.009 -> Color(0xFFF44336) // Red
+        netBalance > 0.009 -> balanceColors.positive
+        netBalance < -0.009 -> balanceColors.negative
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -39,8 +40,8 @@ fun BalanceCard(
     }
 
     val containerBg = when {
-        netBalance > 0.009 -> Color(0xFF4CAF50).copy(alpha = 0.12f)
-        netBalance < -0.009 -> Color(0xFFF44336).copy(alpha = 0.12f)
+        netBalance > 0.009 -> balanceColors.positive.copy(alpha = 0.12f)
+        netBalance < -0.009 -> balanceColors.negative.copy(alpha = 0.12f)
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
 

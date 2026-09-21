@@ -30,9 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.data.model.Expense
 import com.example.expensetracker.domain.CurrencyUtils
+import com.example.expensetracker.ui.components.pressScale
+import com.example.expensetracker.ui.components.rememberPressInteractionSource
 import com.example.expensetracker.ui.theme.AmountStyle
 import com.example.expensetracker.ui.theme.AmountStyleLarge
 import com.example.expensetracker.ui.theme.AmountStyleSmall
+import com.example.expensetracker.ui.theme.CardShape
+import com.example.expensetracker.ui.theme.HeroCardShape
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,7 +118,7 @@ fun BreakdownTab(
             item {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = HeroCardShape,
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     )
@@ -307,15 +311,18 @@ fun BreakdownTab(
                 val payer = memberMap[expense.paidByMemberId]
                 val categoryIcon = com.example.expensetracker.ui.components.expenseCategories
                     .find { it.name.equals(expense.category, ignoreCase = true) }?.icon ?: "💳"
+                val interactionSource = rememberPressInteractionSource()
 
                 ElevatedCard(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onEditExpense(expense)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onEditExpense(expense)
-                        },
-                    shape = RoundedCornerShape(18.dp),
+                        .pressScale(interactionSource),
+                    interactionSource = interactionSource,
+                    shape = CardShape,
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     )

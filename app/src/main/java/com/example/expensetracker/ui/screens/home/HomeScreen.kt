@@ -1,13 +1,15 @@
 package com.example.expensetracker.ui.screens.home
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -28,6 +30,7 @@ import com.example.expensetracker.data.model.SplitGroup
 import com.example.expensetracker.domain.CurrencyUtils
 import com.example.expensetracker.ui.screens.expense.AddExpenseSheet
 import com.example.expensetracker.ui.screens.expense.AddExpenseViewModel
+import com.example.expensetracker.ui.theme.CardShape
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -99,13 +102,30 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    val scaleIn = remember { Animatable(0.6f) }
+                    LaunchedEffect(Unit) {
+                        scaleIn.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            )
+                        )
+                    }
                     Surface(
                         shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(80.dp)
+                        modifier = Modifier
+                            .size(80.dp)
+                            .scale(scaleIn.value)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text("💸", style = MaterialTheme.typography.displaySmall)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                                contentDescription = null,
+                                modifier = Modifier.size(36.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         }
                     }
                     Text(
@@ -189,7 +209,7 @@ fun GroupCard(
             .fillMaxWidth()
             .scale(scale),
         interactionSource = interactionSource,
-        shape = RoundedCornerShape(20.dp),
+        shape = CardShape,
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )

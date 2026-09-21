@@ -3,7 +3,6 @@ package com.example.expensetracker.ui.screens.group
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Payments
@@ -21,6 +20,7 @@ import com.example.expensetracker.domain.CurrencyUtils
 import com.example.expensetracker.ui.components.BalanceCard
 import com.example.expensetracker.ui.theme.AmountStyle
 import com.example.expensetracker.ui.theme.AmountStyleLarge
+import com.example.expensetracker.ui.theme.HeroCardShape
 
 @Composable
 fun BalancesTab(viewModel: GroupViewModel, onNavigateToSettleUp: (Long) -> Unit) {
@@ -41,7 +41,7 @@ fun BalancesTab(viewModel: GroupViewModel, onNavigateToSettleUp: (Long) -> Unit)
         item {
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = HeroCardShape,
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )

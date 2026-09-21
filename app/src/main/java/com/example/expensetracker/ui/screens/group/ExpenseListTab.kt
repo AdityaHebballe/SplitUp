@@ -1,6 +1,5 @@
 package com.example.expensetracker.ui.screens.group
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +15,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.data.model.Expense
 import com.example.expensetracker.domain.CurrencyUtils
 import com.example.expensetracker.ui.components.expenseCategories
+import com.example.expensetracker.ui.components.pressScale
+import com.example.expensetracker.ui.components.rememberPressInteractionSource
 import com.example.expensetracker.ui.theme.AmountStyle
+import com.example.expensetracker.ui.theme.CardShape
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,12 +59,15 @@ fun ExpenseListTab(
                 val payerName = memberMap[expense.paidByMemberId]?.name ?: "Member ${expense.paidByMemberId}"
                 val catIcon = categoryIconMap[expense.category] ?: "💰"
                 val dateStr = dateFormatter.format(Date(expense.createdAt))
+                val interactionSource = rememberPressInteractionSource()
 
                 ElevatedCard(
+                    onClick = { onEditExpense(expense) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onEditExpense(expense) },
-                    shape = MaterialTheme.shapes.large,
+                        .pressScale(interactionSource),
+                    interactionSource = interactionSource,
+                    shape = CardShape,
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     )
@@ -116,10 +121,11 @@ fun ExpenseListTab(
                                 style = AmountStyle,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            IconButton(
+                            FilledTonalIconButton(
                                 onClick = { expenseToDelete = expense },
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             ) {
                                 Icon(

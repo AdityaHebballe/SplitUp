@@ -61,7 +61,7 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { group?.let { onNavigateToSettings(it.id) } }) {
+                    FilledTonalIconButton(onClick = { group?.let { onNavigateToSettings(it.id) } }) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
                 }

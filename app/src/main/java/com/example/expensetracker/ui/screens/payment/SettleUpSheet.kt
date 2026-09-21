@@ -21,6 +21,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.ui.components.CurrencyPicker
+import com.example.expensetracker.ui.components.pressScale
+import com.example.expensetracker.ui.components.rememberPressInteractionSource
 import com.example.expensetracker.ui.screens.group.GroupViewModel
 import com.example.expensetracker.ui.theme.AmountStyleLarge
 import kotlinx.coroutines.launch
@@ -127,11 +129,14 @@ fun SettleUpSheet(
             ) {
                 // From Member
                 val fromMember = members.find { it.id == fromMemberId }
+                val fromInteractionSource = rememberPressInteractionSource()
                 Box(modifier = Modifier.weight(1f)) {
                     ElevatedCard(
+                        onClick = { fromDropdownExpanded = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { fromDropdownExpanded = true },
+                            .pressScale(fromInteractionSource),
+                        interactionSource = fromInteractionSource,
                         colors = CardDefaults.elevatedCardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                         )
@@ -197,11 +202,14 @@ fun SettleUpSheet(
 
                 // To Member
                 val toMember = members.find { it.id == toMemberId }
+                val toInteractionSource = rememberPressInteractionSource()
                 Box(modifier = Modifier.weight(1f)) {
                     ElevatedCard(
+                        onClick = { toDropdownExpanded = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { toDropdownExpanded = true },
+                            .pressScale(toInteractionSource),
+                        interactionSource = toInteractionSource,
                         colors = CardDefaults.elevatedCardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                         )
