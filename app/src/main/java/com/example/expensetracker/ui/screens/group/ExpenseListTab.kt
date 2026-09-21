@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.data.model.Expense
 import com.example.expensetracker.domain.CurrencyUtils
 import com.example.expensetracker.ui.components.expenseCategories
+import com.example.expensetracker.ui.theme.AmountStyle
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -107,9 +108,12 @@ fun ExpenseListTab(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = CurrencyUtils.formatAmount(expense.amount, expense.currency),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                                text = CurrencyUtils.formatAmountStyled(
+                                    expense.amount,
+                                    expense.currency,
+                                    symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                style = AmountStyle,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             IconButton(

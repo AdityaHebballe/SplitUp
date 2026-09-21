@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.expensetracker.domain.CurrencyUtils
@@ -19,18 +20,22 @@ fun BalanceCard(
     currencyCode: String,
     modifier: Modifier = Modifier
 ) {
-    val symbol = CurrencyUtils.getSymbol(currencyCode)
     val color = when {
         netBalance > 0.009 -> Color(0xFF4CAF50) // Green
         netBalance < -0.009 -> Color(0xFFF44336) // Red
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    val formattedNet = String.format("%.2f", kotlin.math.abs(netBalance))
     val netText = when {
-        netBalance > 0.009 -> "Gets back $symbol$formattedNet"
-        netBalance < -0.009 -> "Owes $symbol$formattedNet"
-        else -> "Settled up"
+        netBalance > 0.009 -> buildAnnotatedString {
+            append("Gets back ")
+            append(CurrencyUtils.formatAmountStyled(kotlin.math.abs(netBalance), currencyCode, symbolColor = color.copy(alpha = 0.7f)))
+        }
+        netBalance < -0.009 -> buildAnnotatedString {
+            append("Owes ")
+            append(CurrencyUtils.formatAmountStyled(kotlin.math.abs(netBalance), currencyCode, symbolColor = color.copy(alpha = 0.7f)))
+        }
+        else -> buildAnnotatedString { append("Settled up") }
     }
 
     val containerBg = when {
@@ -79,7 +84,11 @@ fun BalanceCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Paid ${CurrencyUtils.formatAmount(totalPaid, currencyCode)} total",
+                        text = buildAnnotatedString {
+                            append("Paid ")
+                            append(CurrencyUtils.formatAmountStyled(totalPaid, currencyCode))
+                            append(" total")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

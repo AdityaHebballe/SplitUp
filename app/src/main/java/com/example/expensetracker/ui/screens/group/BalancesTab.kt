@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.domain.CurrencyUtils
 import com.example.expensetracker.ui.components.BalanceCard
+import com.example.expensetracker.ui.theme.AmountStyle
+import com.example.expensetracker.ui.theme.AmountStyleLarge
 
 @Composable
 fun BalancesTab(viewModel: GroupViewModel, onNavigateToSettleUp: (Long) -> Unit) {
@@ -59,9 +61,12 @@ fun BalancesTab(viewModel: GroupViewModel, onNavigateToSettleUp: (Long) -> Unit)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = CurrencyUtils.formatAmount(totalSpent, currentCurrency),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
+                            text = CurrencyUtils.formatAmountStyled(
+                                totalSpent,
+                                currentCurrency,
+                                symbolColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            ),
+                            style = AmountStyleLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
@@ -189,9 +194,12 @@ fun BalancesTab(viewModel: GroupViewModel, onNavigateToSettleUp: (Long) -> Unit)
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = CurrencyUtils.formatAmount(settlement.amount, settlement.currency),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                                text = CurrencyUtils.formatAmountStyled(
+                                    settlement.amount,
+                                    settlement.currency,
+                                    symbolColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                ),
+                                style = AmountStyle,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )

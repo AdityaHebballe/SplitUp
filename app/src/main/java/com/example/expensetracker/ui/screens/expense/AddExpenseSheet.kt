@@ -28,6 +28,7 @@ import com.example.expensetracker.ui.components.CategoryChips
 import com.example.expensetracker.ui.components.CurrencyPicker
 import com.example.expensetracker.ui.components.MemberSelector
 import com.example.expensetracker.ui.components.RatioEditor
+import com.example.expensetracker.ui.theme.AmountStyleLarge
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -203,7 +204,7 @@ fun AddExpenseSheet(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .focusRequester(focusRequester),
-                    textStyle = MaterialTheme.typography.headlineMedium,
+                    textStyle = AmountStyleLarge,
                     trailingIcon = {
                         Box(modifier = Modifier.padding(end = 8.dp)) {
                             ElevatedFilterChip(

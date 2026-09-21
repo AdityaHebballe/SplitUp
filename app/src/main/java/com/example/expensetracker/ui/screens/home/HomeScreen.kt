@@ -1,21 +1,22 @@
 package com.example.expensetracker.ui.screens.home
 
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -37,7 +38,6 @@ fun HomeScreen(
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     var showQuickAddSheet by remember { mutableStateOf(false) }
-    var groupToDelete by remember { mutableStateOf<SplitGroup?>(null) }
     val haptic = LocalHapticFeedback.current
     val listState = rememberLazyListState()
 
@@ -57,7 +57,7 @@ fun HomeScreen(
                 scrollBehavior = scrollBehavior,
                 actions = {
                     if (groups.isNotEmpty()) {
-                        IconButton(onClick = onNavigateToCreateGroup) {
+                        FilledTonalIconButton(onClick = onNavigateToCreateGroup) {
                             Icon(Icons.Default.GroupAdd, contentDescription = "New Group")
                         }
                     }
@@ -151,46 +151,11 @@ fun HomeScreen(
                     GroupCard(
                         group = group,
                         onClick = { onNavigateToGroup(group.id) },
-                        onDelete = { groupToDelete = group }
+                        modifier = Modifier.animateItem()
                     )
                 }
             }
         }
-    }
-
-    if (groupToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { groupToDelete = null },
-            icon = {
-                Icon(
-                    imageVector = Icons.Outlined.DeleteOutline,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("Delete Group") },
-            text = { Text("Are you sure you want to delete \"${groupToDelete?.name}\"? All associated expenses, members, and settlements will be removed permanently.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        groupToDelete?.let { viewModel.deleteGroup(it) }
-                        groupToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    Text("Delete", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { groupToDelete = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 
     if (showQuickAddSheet && groups.isNotEmpty()) {
@@ -202,18 +167,28 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun GroupCard(
     group: SplitGroup,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     val symbol = CurrencyUtils.getSymbol(group.defaultCurrency)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        label = "GroupCardScale"
+    )
 
     ElevatedCard(
-        modifier = Modifier
+        onClick = onClick,
+        modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .scale(scale),
+        interactionSource = interactionSource,
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -232,7 +207,7 @@ fun GroupCard(
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Surface(
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialShapes.Cookie9Sided.toShape(),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(48.dp)
                 ) {
@@ -260,17 +235,11 @@ fun GroupCard(
                 }
             }
 
-            IconButton(
-                onClick = onDelete,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.DeleteOutline,
-                    contentDescription = "Delete Group"
-                )
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

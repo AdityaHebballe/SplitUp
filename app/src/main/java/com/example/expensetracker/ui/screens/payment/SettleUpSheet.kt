@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.ui.components.CurrencyPicker
 import com.example.expensetracker.ui.screens.group.GroupViewModel
+import com.example.expensetracker.ui.theme.AmountStyleLarge
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -262,7 +263,7 @@ fun SettleUpSheet(
                 label = { Text("Amount Paid") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.headlineSmall,
+                textStyle = AmountStyleLarge,
                 trailingIcon = {
                     Box(modifier = Modifier.padding(end = 8.dp)) {
                         Text(

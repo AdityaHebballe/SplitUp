@@ -1,5 +1,12 @@
 package com.example.expensetracker.domain
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
 import java.util.Locale
 
 data class Currency(val code: String, val name: String, val symbol: String)
@@ -21,6 +28,33 @@ object CurrencyUtils {
     fun formatAmount(amount: Double, currencyCode: String): String {
         val symbol = getSymbol(currencyCode)
         return String.format(Locale.US, "%s%.2f", symbol, amount)
+    }
+
+    /**
+     * Formats an amount as an [AnnotatedString] with the currency symbol de-emphasized
+     * (smaller, lighter weight, muted color) relative to the numeric amount, following the
+     * common fintech convention (Google Pay/Wallet) — a single baseline avoids the
+     * misalignment of using two separate Text composables.
+     */
+    fun formatAmountStyled(
+        amount: Double,
+        currencyCode: String,
+        symbolColor: Color = Color.Unspecified
+    ): AnnotatedString {
+        val symbol = getSymbol(currencyCode)
+        val amountText = String.format(Locale.US, "%.2f", amount)
+        return buildAnnotatedString {
+            withStyle(
+                SpanStyle(
+                    fontSize = 0.6.em,
+                    fontWeight = FontWeight.Normal,
+                    color = symbolColor
+                )
+            ) {
+                append(symbol)
+            }
+            append(amountText)
+        }
     }
 
     val currencies: List<Currency> = listOf(

@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expensetracker.data.model.Expense
 import com.example.expensetracker.domain.CurrencyUtils
+import com.example.expensetracker.ui.theme.AmountStyle
+import com.example.expensetracker.ui.theme.AmountStyleLarge
+import com.example.expensetracker.ui.theme.AmountStyleSmall
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -191,9 +194,12 @@ fun BreakdownTab(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = CurrencyUtils.formatAmount(totalSpent, currentCurrency),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
+                                    text = CurrencyUtils.formatAmountStyled(
+                                        totalSpent,
+                                        currentCurrency,
+                                        symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    style = AmountStyleLarge,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -256,9 +262,12 @@ fun BreakdownTab(
                                                 )
                                             }
                                             Text(
-                                                text = CurrencyUtils.formatAmount(item.amount, currentCurrency),
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
+                                                text = CurrencyUtils.formatAmountStyled(
+                                                    item.amount,
+                                                    currentCurrency,
+                                                    symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                ),
+                                                style = AmountStyleSmall,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
@@ -365,9 +374,12 @@ fun BreakdownTab(
                         }
 
                         Text(
-                            text = CurrencyUtils.formatAmount(expense.amount, expense.currency),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            text = CurrencyUtils.formatAmountStyled(
+                                expense.amount,
+                                expense.currency,
+                                symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            style = AmountStyle,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
