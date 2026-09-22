@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,13 +58,8 @@ fun HomeScreen(
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     var showQuickAddSheet by remember { mutableStateOf(false) }
-    var isFabMenuExpanded by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val listState = rememberLazyListState()
-
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) isFabMenuExpanded = false
-    }
 
     val addExpenseViewModel: AddExpenseViewModel = viewModel()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -100,125 +96,30 @@ fun HomeScreen(
         },
         floatingActionButton = {
             if (groups.isNotEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Option 1: New Group
-                    AnimatedVisibility(
-                        visible = isFabMenuExpanded,
-                        enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
-                                scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)),
-                        exit = fadeOut(animationSpec = spring(stiffness = Spring.StiffnessHigh)) +
-                               scaleOut(animationSpec = spring(stiffness = Spring.StiffnessHigh))
-                    ) {
-                        val interaction = rememberPressInteractionSource()
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .pressScale(interaction)
-                                .clickable(
-                                    interactionSource = interaction,
-                                    indication = ripple()
-                                ) {
-                                    isFabMenuExpanded = false
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onNavigateToCreateGroup()
-                                }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.GroupAdd,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    "New Group",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    // Option 2: Log Expense
-                    AnimatedVisibility(
-                        visible = isFabMenuExpanded,
-                        enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
-                                scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)),
-                        exit = fadeOut(animationSpec = spring(stiffness = Spring.StiffnessHigh)) +
-                               scaleOut(animationSpec = spring(stiffness = Spring.StiffnessHigh))
-                    ) {
-                        val interaction = rememberPressInteractionSource()
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .pressScale(interaction)
-                                .clickable(
-                                    interactionSource = interaction,
-                                    indication = ripple()
-                                ) {
-                                    isFabMenuExpanded = false
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showQuickAddSheet = true
-                                }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ReceiptLong,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    "Log Expense",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                    }
-
-                    // Main FAB: Rotates 45 degrees to "x" with spring physics
-                    val rotation by animateFloatAsState(
-                        targetValue = if (isFabMenuExpanded) 45f else 0f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                        label = "FabRotation"
-                    )
-                    FloatingActionButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            isFabMenuExpanded = !isFabMenuExpanded
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.primary,
-                        contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = if (isFabMenuExpanded) "Close actions" else "Add actions",
-                            modifier = Modifier
-                                .size(26.dp)
-                                .rotate(rotation)
-                        )
-                    }
+                val fabInteraction = rememberPressInteractionSource()
+                val isExpanded by remember {
+                    derivedStateOf { listState.firstVisibleItemIndex == 0 }
                 }
+                ExtendedFloatingActionButton(
+                    text = { Text("Log Expense", fontWeight = FontWeight.Bold) },
+                    icon = {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ReceiptLong,
+                            contentDescription = "Log Expense",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    expanded = isExpanded,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showQuickAddSheet = true
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    interactionSource = fabInteraction,
+                    modifier = Modifier.pressScale(fabInteraction)
+                )
             }
         }
     ) { padding ->
@@ -310,12 +211,44 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    Text(
-                        text = "Your Groups",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Your Groups",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val newGroupInteraction = rememberPressInteractionSource()
+                        FilledTonalButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onNavigateToCreateGroup()
+                            },
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            interactionSource = newGroupInteraction,
+                            modifier = Modifier
+                                .height(36.dp)
+                                .pressScale(newGroupInteraction)
+                        ) {
+                            Icon(
+                                Icons.Outlined.GroupAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "New Group",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
 
                 items(groups, key = { it.id }) { group ->
@@ -326,21 +259,6 @@ fun HomeScreen(
                     )
                 }
             }
-        }
-
-        // Touch dismiss scrim for Speed Dial FAB
-        if (isFabMenuExpanded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        isFabMenuExpanded = false
-                    }
-            )
         }
     }
 
