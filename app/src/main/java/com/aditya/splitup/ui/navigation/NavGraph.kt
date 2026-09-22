@@ -23,6 +23,8 @@ import com.aditya.splitup.ui.screens.join.JoinGroupScreen
 import com.aditya.splitup.ui.screens.join.JoinGroupViewModel
 import com.aditya.splitup.ui.screens.settings.GroupSettingsScreen
 import com.aditya.splitup.ui.screens.settings.GroupSettingsViewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.navDeepLink
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -38,11 +40,10 @@ data class GroupSettingsRoute(val groupId: Long)
 object CreateGroupRoute
 
 @Serializable
-object JoinGroupRoute
+data class JoinGroupRoute(val code: String? = null)
 
 @Composable
-fun SplitTrackerNavGraph() {
-    val navController = rememberNavController()
+fun SplitTrackerNavGraph(navController: NavHostController = rememberNavController()) {
     val context = LocalContext.current.applicationContext as android.app.Application
 
     NavHost(
@@ -84,7 +85,7 @@ fun SplitTrackerNavGraph() {
                     navController.navigate(CreateGroupRoute)
                 },
                 onNavigateToJoinGroup = {
-                    navController.navigate(JoinGroupRoute)
+                    navController.navigate(JoinGroupRoute())
                 }
             )
         }
@@ -131,10 +132,24 @@ fun SplitTrackerNavGraph() {
             )
         }
 
-        composable<JoinGroupRoute> {
+        composable<JoinGroupRoute>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "https://splitup.app/join/{code}" },
+                navDeepLink { uriPattern = "https://splitup.app/join?code={code}" },
+                navDeepLink { uriPattern = "https://splitup.app/join" },
+                navDeepLink { uriPattern = "http://splitup.app/join/{code}" },
+                navDeepLink { uriPattern = "http://splitup.app/join?code={code}" },
+                navDeepLink { uriPattern = "http://splitup.app/join" },
+                navDeepLink { uriPattern = "splitup://join/{code}" },
+                navDeepLink { uriPattern = "splitup://join?code={code}" },
+                navDeepLink { uriPattern = "splitup://join" }
+            )
+        ) { backStackEntry ->
+            val route = backStackEntry.toRoute<JoinGroupRoute>()
             val viewModel: JoinGroupViewModel = viewModel()
             JoinGroupScreen(
                 viewModel = viewModel,
+                initialCode = route.code,
                 onNavigateBack = { navController.popBackStack() },
                 onGroupJoined = { groupId ->
                     navController.popBackStack()

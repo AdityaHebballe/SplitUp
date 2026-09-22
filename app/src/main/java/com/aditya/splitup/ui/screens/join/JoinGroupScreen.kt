@@ -35,11 +35,21 @@ import com.aditya.splitup.ui.theme.HeroCardShape
 @Composable
 fun JoinGroupScreen(
     viewModel: JoinGroupViewModel,
+    initialCode: String? = null,
     onNavigateBack: () -> Unit,
     onGroupJoined: (Long) -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(initialCode) {
+        if (!initialCode.isNullOrBlank()) {
+            val sanitized = initialCode.trim().removePrefix("/").uppercase().take(6)
+            if (sanitized.length == 6) {
+                viewModel.lookupCode(sanitized)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -47,7 +57,7 @@ fun JoinGroupScreen(
                 title = { Text("Join a Group") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (state is JoinState.Preview) viewModel.resetToEnterCode()
+                        if (state is JoinState.Preview || state is JoinState.AlreadyMember) viewModel.resetToEnterCode()
                         else onNavigateBack()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -68,6 +78,7 @@ fun JoinGroupScreen(
             when (currentState) {
                 is JoinState.EnterCode, is JoinState.Error -> {
                     EnterCodeStep(
+                        initialCode = initialCode ?: "",
                         error = (currentState as? JoinState.Error)?.message,
                         onLookup = { code ->
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -84,6 +95,16 @@ fun JoinGroupScreen(
                             Text("Looking up invite…", style = MaterialTheme.typography.bodyLarge)
                         }
                     }
+                }
+
+                is JoinState.AlreadyMember -> {
+                    AlreadyMemberStep(
+                        groupName = currentState.groupName,
+                        onOpenGroup = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onGroupJoined(currentState.localGroupId)
+                        }
+                    )
                 }
 
                 is JoinState.Preview -> {
@@ -109,11 +130,74 @@ fun JoinGroupScreen(
 }
 
 @Composable
+private fun AlreadyMemberStep(
+    groupName: String,
+    onOpenGroup: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(32.dp))
+
+        Surface(
+            shape = HeroCardShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(80.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            groupName,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "You are already a member of this group!",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = onOpenGroup,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
+            Text(
+                "Open Group",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
 private fun EnterCodeStep(
+    initialCode: String = "",
     error: String?,
     onLookup: (String) -> Unit
 ) {
-    var code by remember { mutableStateOf("") }
+    var code by remember(initialCode) {
+        mutableStateOf(initialCode.trim().removePrefix("/").uppercase().take(6))
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),

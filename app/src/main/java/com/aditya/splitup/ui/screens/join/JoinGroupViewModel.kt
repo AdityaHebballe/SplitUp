@@ -19,6 +19,7 @@ sealed class JoinState {
     object EnterCode : JoinState()
     object Loading : JoinState()
     data class Preview(val invite: InviteInfo, val memberCount: Int) : JoinState()
+    data class AlreadyMember(val localGroupId: Long, val groupName: String) : JoinState()
     data class Error(val message: String) : JoinState()
     object Success : JoinState()
 }
@@ -41,9 +42,14 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val invite = inviteRepo.lookupInvite(code)
                 if (invite != null) {
-                    val members = syncRepo.firestore.getGroupMembers(invite.groupFirestoreId)
-                    pendingInvite = invite
-                    _state.value = JoinState.Preview(invite, members.size)
+                    val existingGroup = db.groupDao().getGroupByFirestoreId(invite.groupFirestoreId)
+                    if (existingGroup != null) {
+                        _state.value = JoinState.AlreadyMember(existingGroup.id, invite.groupName)
+                    } else {
+                        val members = syncRepo.firestore.getGroupMembers(invite.groupFirestoreId)
+                        pendingInvite = invite
+                        _state.value = JoinState.Preview(invite, members.size)
+                    }
                 } else {
                     _state.value = JoinState.Error("Invalid or expired code. Check the code and try again.")
                 }

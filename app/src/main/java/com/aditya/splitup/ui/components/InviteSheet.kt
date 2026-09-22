@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.*
@@ -46,7 +47,8 @@ fun InviteSheet(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val haptic = LocalHapticFeedback.current
-    var copied by remember { mutableStateOf(false) }
+    var copiedCode by remember { mutableStateOf(false) }
+    var copiedLink by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -201,12 +203,14 @@ fun InviteSheet(
                             }
                         }
 
+                        val inviteLink = "https://splitup.app/join/$code"
+
                         // Share Button (Primary Action)
                         val shareInteractionSource = rememberPressInteractionSource()
                         Button(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                val shareText = "Join my SplitUp group! Use invite code: $code\n\nOpen SplitUp → tap 'Join Group' icon → enter the code above."
+                                val shareText = "Join my SplitUp group!\n\nTap to join directly:\n$inviteLink\n\nOr enter code in SplitUp: $code"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -216,7 +220,7 @@ fun InviteSheet(
                             shape = RoundedCornerShape(18.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
+                                .height(54.dp)
                                 .pressScale(shareInteractionSource),
                             interactionSource = shareInteractionSource
                         ) {
@@ -227,46 +231,88 @@ fun InviteSheet(
                             )
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                text = "Share Invite",
+                                text = "Share Invite Link",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
 
-                        // Copy Button (Secondary Action, below Share Button)
-                        val copyInteractionSource = rememberPressInteractionSource()
-                        FilledTonalButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                clipboardManager.setText(AnnotatedString(code))
-                                copied = true
-                            },
-                            shape = RoundedCornerShape(18.dp),
-                            colors = if (copied) {
-                                ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            } else {
-                                ButtonDefaults.filledTonalButtonColors()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .pressScale(copyInteractionSource),
-                            interactionSource = copyInteractionSource
+                        // Copy Link & Copy Code Buttons (Secondary Actions)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(
-                                imageVector = if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = if (copied) "Copied to Clipboard!" else "Copy Code",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium
-                            )
+                            val copyLinkInteractionSource = rememberPressInteractionSource()
+                            FilledTonalButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    clipboardManager.setText(AnnotatedString(inviteLink))
+                                    copiedLink = true
+                                    copiedCode = false
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = if (copiedLink) {
+                                    ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .pressScale(copyLinkInteractionSource),
+                                interactionSource = copyLinkInteractionSource
+                            ) {
+                                Icon(
+                                    imageVector = if (copiedLink) Icons.Outlined.Check else Icons.Outlined.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (copiedLink) "Link Copied!" else "Copy Link",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            val copyCodeInteractionSource = rememberPressInteractionSource()
+                            FilledTonalButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    clipboardManager.setText(AnnotatedString(code))
+                                    copiedCode = true
+                                    copiedLink = false
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = if (copiedCode) {
+                                    ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .pressScale(copyCodeInteractionSource),
+                                interactionSource = copyCodeInteractionSource
+                            ) {
+                                Icon(
+                                    imageVector = if (copiedCode) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (copiedCode) "Code Copied!" else "Copy Code",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 } else if (error != null) {
