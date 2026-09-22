@@ -164,11 +164,49 @@ fun BreakdownTab(
                         val strokeWidth = 28.dp
                         val popOffset = 10.dp
 
+                        // Compute visual sweeps with minSweep guarantee so small categories render
+                        // as smooth circles with rounded caps (StrokeCap.Round) without overlapping neighbors
+                        val count = categorySpendings.size
+                        val visualSweeps = remember(categorySpendings) {
+                            if (count <= 1) {
+                                FloatArray(count) { 360f }
+                            } else {
+                                val rawSweeps = categorySpendings.map { (it.percentage / 100f) * 360f }
+                                val capAngleDeg = (14f / 81f) * (180f / Math.PI.toFloat())
+                                val minSweepDeg = capAngleDeg * 2f + 5f // ~25 degrees to guarantee circle shape
+
+                                val smallIndices = rawSweeps.indices.filter { rawSweeps[it] < minSweepDeg }
+                                val largeIndices = rawSweeps.indices.filter { rawSweeps[it] >= minSweepDeg }
+
+                                val totalSmallBudget = smallIndices.size * minSweepDeg
+                                if (totalSmallBudget < 360f && largeIndices.isNotEmpty()) {
+                                    val remainingForLarge = 360f - totalSmallBudget
+                                    val largeRawSum = largeIndices.sumOf { rawSweeps[it].toDouble() }.toFloat()
+                                    FloatArray(count) { i ->
+                                        if (rawSweeps[i] < minSweepDeg) minSweepDeg
+                                        else (rawSweeps[i] / largeRawSum) * remainingForLarge
+                                    }
+                                } else {
+                                    FloatArray(count) { (categorySpendings[it].percentage / 100f) * 360f }
+                                }
+                            }
+                        }
+
+                        val startAngles = remember(visualSweeps) {
+                            val starts = FloatArray(count)
+                            var current = -90f
+                            visualSweeps.forEachIndexed { i, sweep ->
+                                starts[i] = current
+                                current += sweep
+                            }
+                            starts
+                        }
+
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .size(210.dp)
-                                .pointerInput(categorySpendings, selectedCategory) {
+                                .pointerInput(categorySpendings, selectedCategory, visualSweeps) {
                                     val strokeWidthPx = strokeWidth.toPx()
                                     val popOffsetPx = popOffset.toPx()
                                     val marginPx = 12.dp.toPx()
@@ -188,10 +226,10 @@ fun BreakdownTab(
 
                                             var cumulative = 0f
                                             var tappedCategory: String? = null
-                                            for (item in categorySpendings) {
-                                                val sweep = (item.percentage / 100f) * 360f
+                                            for (i in categorySpendings.indices) {
+                                                val sweep = visualSweeps.getOrElse(i) { (categorySpendings[i].percentage / 100f) * 360f }
                                                 if (angle >= cumulative && angle < cumulative + sweep) {
-                                                    tappedCategory = item.category
+                                                    tappedCategory = categorySpendings[i].category
                                                     break
                                                 }
                                                 cumulative += sweep
@@ -246,13 +284,6 @@ fun BreakdownTab(
                                 val baseRadius = (size.minDimension - strokeWidthPx - popOffsetPx * 2) / 2
                                 val center = Offset(size.width / 2, size.height / 2)
 
-                                val startAngles = FloatArray(categorySpendings.size)
-                                var currentStart = -90f
-                                categorySpendings.forEachIndexed { i, item ->
-                                    startAngles[i] = currentStart
-                                    currentStart += (item.percentage / 100f) * 360f
-                                }
-
                                 // Always draw unselected slices first, then the selected slice on top
                                 val unselectedIndices = categorySpendings.indices.filter { categorySpendings[it].category != selectedCategory }
                                 val selectedIdx = categorySpendings.indices.firstOrNull { categorySpendings[it].category == selectedCategory }
@@ -260,7 +291,7 @@ fun BreakdownTab(
 
                                 drawOrder.forEach { index ->
                                     val item = categorySpendings[index]
-                                    val fullSweep = (item.percentage / 100f) * 360f
+                                    val fullSweep = visualSweeps.getOrElse(index) { (item.percentage / 100f) * 360f }
                                     val sliceColor = colorPalette[index % colorPalette.size]
 
                                     val radius = baseRadius + popOffsetPx * slicePops[index].value
@@ -268,46 +299,43 @@ fun BreakdownTab(
                                     val arcSize = Size(radius * 2, radius * 2)
 
                                     val capAngle = (strokeWidthPx / 2f / radius) * (180f / Math.PI.toFloat())
-                                    val targetGap = 4f
-                                    // A round cap adds `capAngle` on each side (2 * capAngle total).
-                                    // A slice can safely use StrokeCap.Round without overlapping its neighbors
-                                    // only if its angular budget `fullSweep` can fit both caps plus the gap.
-                                    val canUseRoundCap = categorySpendings.size > 1 && fullSweep >= (capAngle * 2f + targetGap + 2f)
-
-                                    val startAngle: Float
-                                    val sweepAngle: Float
-                                    val cap: StrokeCap
+                                    val targetGap = 5f
 
                                     if (categorySpendings.size == 1) {
-                                        startAngle = startAngles[index]
-                                        sweepAngle = (fullSweep * animProgress.value).coerceAtLeast(0.1f)
-                                        cap = StrokeCap.Butt
-                                    } else if (canUseRoundCap) {
-                                        val totalDeduct = capAngle * 2f + targetGap
-                                        startAngle = startAngles[index] + capAngle + (targetGap / 2f)
-                                        sweepAngle = ((fullSweep - totalDeduct) * animProgress.value).coerceAtLeast(0.1f)
-                                        cap = StrokeCap.Round
-                                    } else {
-                                        // Small slices (< ~25°) cannot physically fit round caps without spilling into neighbors.
-                                        // Use StrokeCap.Butt with a clean gap to guarantee zero overlap.
-                                        val smallGap = targetGap.coerceAtMost(fullSweep * 0.3f)
-                                        startAngle = startAngles[index] + (smallGap / 2f)
-                                        sweepAngle = ((fullSweep - smallGap) * animProgress.value).coerceAtLeast(0.5f)
-                                        cap = StrokeCap.Butt
-                                    }
-
-                                    drawArc(
-                                        color = sliceColor.copy(alpha = sliceAlphas[index].value),
-                                        startAngle = startAngle,
-                                        sweepAngle = sweepAngle,
-                                        useCenter = false,
-                                        topLeft = topLeft,
-                                        size = arcSize,
-                                        style = Stroke(
-                                            width = strokeWidthPx,
-                                            cap = cap
+                                        drawArc(
+                                            color = sliceColor.copy(alpha = sliceAlphas[index].value),
+                                            startAngle = -90f,
+                                            sweepAngle = (360f * animProgress.value).coerceAtLeast(0.1f),
+                                            useCenter = false,
+                                            topLeft = topLeft,
+                                            size = arcSize,
+                                            style = Stroke(
+                                                width = strokeWidthPx,
+                                                cap = StrokeCap.Butt
+                                            )
                                         )
-                                    )
+                                    } else {
+                                        // All multi-segment slices use StrokeCap.Round!
+                                        // Small slices at minSweep render as a perfect circle (no flat edges).
+                                        // Larger slices render as elongated pills with rounded ends.
+                                        val totalDeduct = capAngle * 2f + targetGap
+                                        val arcSweep = (fullSweep - totalDeduct).coerceAtLeast(0.1f)
+                                        val sweepAngle = (arcSweep * animProgress.value).coerceAtLeast(0.1f)
+                                        val startAngle = startAngles[index] + capAngle + (targetGap / 2f)
+
+                                        drawArc(
+                                            color = sliceColor.copy(alpha = sliceAlphas[index].value),
+                                            startAngle = startAngle,
+                                            sweepAngle = sweepAngle,
+                                            useCenter = false,
+                                            topLeft = topLeft,
+                                            size = arcSize,
+                                            style = Stroke(
+                                                width = strokeWidthPx,
+                                                cap = StrokeCap.Round
+                                            )
+                                        )
+                                    }
                                 }
                             }
 
