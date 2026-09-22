@@ -70,6 +70,7 @@ class CreateGroupViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun createGroup(onSuccess: (Long) -> Unit) {
+        val app = getApplication<SplitTrackerApp>()
         viewModelScope.launch {
             val uid = firestoreService.currentUid
             val group = SplitGroup(
@@ -77,24 +78,14 @@ class CreateGroupViewModel(application: Application) : AndroidViewModel(applicat
                 defaultCurrency = _defaultCurrency.value,
                 ownerUid = uid
             )
+            // 1. Insert group into local Room database
             val groupId = repository.insertGroup(group)
 
-            // Push group to Firestore
-            val fsGroupId = try {
-                firestoreService.createGroup(group.copy(id = groupId))
-            } catch (e: Exception) {
-                Log.e("CreateGroupVM", "Firestore group creation failed", e)
-                null
-            }
-
-            if (fsGroupId != null) {
-                repository.updateGroup(group.copy(id = groupId, firestoreId = fsGroupId, ownerUid = uid))
-            }
-
+            // 2. Insert members into local Room database
             var defaultPayerId: Long? = null
+            val memberIdList = mutableListOf<Long>()
             _memberNames.value.forEachIndexed { index, name ->
                 val ratio = _ratios.value[name] ?: 1
-                // First member gets linked to current user, rest are unlinked
                 val linkedUid = if (index == 0) uid else null
                 val member = Member(
                     groupId = groupId,
@@ -103,20 +94,7 @@ class CreateGroupViewModel(application: Application) : AndroidViewModel(applicat
                     linkedUid = linkedUid
                 )
                 val memberId = repository.insertMember(member)
-
-                if (fsGroupId != null) {
-                    val fsMemberId = try {
-                        firestoreService.addMember(fsGroupId, member.copy(id = memberId), linkedUid)
-                    } catch (e: Exception) {
-                        Log.e("CreateGroupVM", "Firestore member creation failed", e)
-                        null
-                    }
-                    if (fsMemberId != null) {
-                        repository.updateMember(
-                            member.copy(id = memberId, firestoreId = fsMemberId, linkedUid = linkedUid)
-                        )
-                    }
-                }
+                memberIdList.add(memberId)
 
                 if (index == _defaultPayerIndex.value) {
                     defaultPayerId = memberId
@@ -124,18 +102,52 @@ class CreateGroupViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             if (defaultPayerId != null) {
-                val updatedGroup = db.groupDao().getAllGroupsOnce().find { it.id == groupId }
-                if (updatedGroup != null) {
-                    repository.updateGroup(updatedGroup.copy(defaultPayerMemberId = defaultPayerId))
+                repository.updateGroup(group.copy(id = groupId, defaultPayerMemberId = defaultPayerId))
+            }
+
+            // 3. Close the screen immediately and navigate to the new group
+            onSuccess(groupId)
+
+            // 4. Background sync to Firestore (does not block UI or navigation)
+            app.appScope.launch {
+                try {
+                    val fsGroupId = firestoreService.createGroup(group.copy(id = groupId))
+                    repository.updateGroup(
+                        group.copy(
+                            id = groupId,
+                            firestoreId = fsGroupId,
+                            defaultPayerMemberId = defaultPayerId,
+                            ownerUid = uid
+                        )
+                    )
+
+                    _memberNames.value.forEachIndexed { index, name ->
+                        val memberId = memberIdList.getOrNull(index) ?: return@forEachIndexed
+                        val ratio = _ratios.value[name] ?: 1
+                        val linkedUid = if (index == 0) uid else null
+                        val fsMemberId = firestoreService.addMember(
+                            fsGroupId,
+                            Member(id = memberId, groupId = groupId, name = name, defaultRatioPart = ratio),
+                            linkedUid
+                        )
+                        repository.updateMember(
+                            Member(
+                                id = memberId,
+                                groupId = groupId,
+                                firestoreId = fsMemberId,
+                                name = name,
+                                defaultRatioPart = ratio,
+                                linkedUid = linkedUid
+                            )
+                        )
+                    }
+
+                    syncRepo.startSync(fsGroupId, groupId)
+                    Log.d("CreateGroupVM", "Group '$groupId' successfully synced to Firestore as '$fsGroupId'")
+                } catch (e: Exception) {
+                    Log.e("CreateGroupVM", "Background Firestore sync failed (will retry on next app launch)", e)
                 }
             }
-
-            // Start sync listeners for the new group
-            if (fsGroupId != null) {
-                syncRepo.startSync(fsGroupId, groupId)
-            }
-
-            onSuccess(groupId)
         }
     }
 }

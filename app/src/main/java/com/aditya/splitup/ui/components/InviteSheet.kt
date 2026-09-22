@@ -33,6 +33,7 @@ import com.aditya.splitup.ui.theme.HeroCardShape
 fun InviteSheet(
     inviteCode: String?,
     isGenerating: Boolean,
+    errorMessage: String? = null,
     onGenerate: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -162,6 +163,28 @@ fun InviteSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator()
+                    }
+                } else if (errorMessage != null) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = onGenerate,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Text("Try Again")
+                        }
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

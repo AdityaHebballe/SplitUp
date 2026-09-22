@@ -48,6 +48,7 @@ fun GroupSettingsScreen(
     val members by viewModel.members.collectAsStateWithLifecycle()
     val inviteCode by viewModel.inviteCode.collectAsStateWithLifecycle()
     val isGeneratingInvite by viewModel.isGeneratingInvite.collectAsStateWithLifecycle()
+    val inviteErrorMessage by viewModel.inviteErrorMessage.collectAsStateWithLifecycle()
     var newMemberName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInviteSheet by remember { mutableStateOf(false) }
@@ -123,6 +124,7 @@ fun GroupSettingsScreen(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         showInviteSheet = true
+                        viewModel.generateInvite()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -364,6 +366,7 @@ fun GroupSettingsScreen(
         InviteSheet(
             inviteCode = inviteCode,
             isGenerating = isGeneratingInvite,
+            errorMessage = inviteErrorMessage,
             onGenerate = { viewModel.generateInvite() },
             onDismiss = {
                 showInviteSheet = false

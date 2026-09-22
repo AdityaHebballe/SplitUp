@@ -17,7 +17,7 @@ class SplitTrackerApp : Application() {
     val firestoreService: FirestoreService by lazy { FirestoreService() }
     val syncRepository: SyncRepository by lazy { SyncRepository(firestoreService, database) }
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()

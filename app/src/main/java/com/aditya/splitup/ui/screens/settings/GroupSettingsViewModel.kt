@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class GroupSettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val repository = GroupRepository(db.groupDao(), db.memberDao())
+    private val syncRepo = (application as SplitTrackerApp).syncRepository
     private val inviteRepo = InviteRepository()
 
     private val _group = MutableStateFlow<SplitGroup?>(null)
@@ -31,6 +32,9 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
 
     private val _isGeneratingInvite = MutableStateFlow(false)
     val isGeneratingInvite: StateFlow<Boolean> = _isGeneratingInvite.asStateFlow()
+
+    private val _inviteErrorMessage = MutableStateFlow<String?>(null)
+    val inviteErrorMessage: StateFlow<String?> = _inviteErrorMessage.asStateFlow()
 
     fun loadGroup(groupId: Long) {
         viewModelScope.launch {
@@ -88,14 +92,37 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun generateInvite() {
-        val firestoreId = _group.value?.firestoreId ?: return
+        val currentGroup = _group.value ?: return
         _isGeneratingInvite.value = true
+        _inviteErrorMessage.value = null
         viewModelScope.launch {
             try {
+                var firestoreId = currentGroup.firestoreId
+                if (firestoreId == null) {
+                    // Group not yet uploaded to Firestore — upload it now
+                    val uid = syncRepo.firestore.currentUid
+                    firestoreId = syncRepo.firestore.createGroup(currentGroup)
+                    val updatedGroup = currentGroup.copy(firestoreId = firestoreId, ownerUid = uid)
+                    repository.updateGroup(updatedGroup)
+                    _group.value = updatedGroup
+
+                    // Also upload any members missing firestoreId
+                    val members = db.memberDao().getMembersByGroupOnce(currentGroup.id)
+                    for (m in members) {
+                        if (m.firestoreId == null) {
+                            val fsMemId = syncRepo.firestore.addMember(firestoreId, m, m.linkedUid)
+                            val updatedMember = m.copy(firestoreId = fsMemId)
+                            db.memberDao().updateMember(updatedMember)
+                        }
+                    }
+                    syncRepo.startSync(firestoreId, currentGroup.id)
+                }
+
                 val code = inviteRepo.createInvite(firestoreId)
                 _inviteCode.value = code
             } catch (e: Exception) {
                 Log.e("GroupSettingsVM", "Failed to generate invite", e)
+                _inviteErrorMessage.value = e.localizedMessage ?: "Failed to generate invite. Check connection."
             } finally {
                 _isGeneratingInvite.value = false
             }
@@ -104,6 +131,7 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
 
     fun clearInviteCode() {
         _inviteCode.value = null
+        _inviteErrorMessage.value = null
     }
 
     fun deleteGroup(onSuccess: () -> Unit) {

@@ -87,7 +87,7 @@ fun CreateGroupScreen(
                         members = memberNames,
                         onAddMember = { viewModel.addMember(it) },
                         onRemoveMember = { viewModel.removeMember(it) },
-                        onNext = { if (memberNames.size >= 2) currentStep++ }
+                        onNext = { if (memberNames.isNotEmpty()) currentStep++ }
                     )
                     3 -> Step3Ratios(
                         memberNames = memberNames,
@@ -146,7 +146,7 @@ fun Step2Members(
     
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Who's in the group?", style = MaterialTheme.typography.headlineMedium)
-        Text("Add at least 2 members", style = MaterialTheme.typography.bodyMedium)
+        Text("Add members to split expenses with (or invite friends later)", style = MaterialTheme.typography.bodyMedium)
         Spacer(modifier = Modifier.height(16.dp))
         
         OutlinedTextField(
@@ -264,8 +264,14 @@ fun Step2Members(
         }
         
         Button(
-            onClick = onNext,
-            enabled = members.size >= 2,
+            onClick = {
+                if (newMemberName.isNotBlank()) {
+                    onAddMember(newMemberName.trim())
+                    newMemberName = ""
+                }
+                onNext()
+            },
+            enabled = members.isNotEmpty() || newMemberName.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Next")
@@ -339,6 +345,7 @@ fun Step5DefaultPayer(
     onCreate: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    var isCreating by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Who usually pays?", style = MaterialTheme.typography.headlineMedium)
@@ -409,12 +416,26 @@ fun Step5DefaultPayer(
         
         Button(
             onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onCreate()
+                if (!isCreating) {
+                    isCreating = true
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onCreate()
+                }
             },
+            enabled = !isCreating,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Create Group")
+            if (isCreating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Creating Group...")
+            } else {
+                Text("Create Group")
+            }
         }
     }
 }
