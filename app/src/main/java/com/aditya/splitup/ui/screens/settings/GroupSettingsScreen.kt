@@ -42,7 +42,8 @@ import com.aditya.splitup.ui.components.RatioEditor
 fun GroupSettingsScreen(
     groupId: Long,
     viewModel: GroupSettingsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onGroupDeleted: () -> Unit = onNavigateBack
 ) {
     val group by viewModel.group.collectAsStateWithLifecycle()
     val members by viewModel.members.collectAsStateWithLifecycle()
@@ -343,7 +344,7 @@ fun GroupSettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteGroup(onSuccess = onNavigateBack)
+                        viewModel.deleteGroup(onSuccess = onGroupDeleted)
                         showDeleteDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(

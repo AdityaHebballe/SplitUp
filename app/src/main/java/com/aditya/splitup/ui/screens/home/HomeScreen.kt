@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,15 +63,36 @@ fun HomeScreen(
                 },
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    // Join existing group via invite code
-                    FilledTonalIconButton(onClick = onNavigateToJoinGroup) {
-                        Icon(Icons.Default.GroupAdd, contentDescription = "Join Group")
+                    // Distinct "Join" button with Key icon and text
+                    FilledTonalButton(
+                        onClick = onNavigateToJoinGroup,
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(38.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Key,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Join", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     }
-                    // Create new group (only shown when groups exist; otherwise FAB handles it)
-                    if (groups.isNotEmpty()) {
-                        FilledTonalIconButton(onClick = onNavigateToCreateGroup) {
-                            Icon(Icons.Filled.Add, contentDescription = "New Group")
-                        }
+                    Spacer(Modifier.width(8.dp))
+                    // Distinct "New Group" primary button with Add icon and text
+                    Button(
+                        onClick = onNavigateToCreateGroup,
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                        modifier = Modifier.height(38.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("New", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -146,13 +169,32 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    Spacer(Modifier.height(8.dp))
+
+                    // Primary Action: Create a Group
                     Button(
                         onClick = onNavigateToCreateGroup,
-                        modifier = Modifier.padding(top = 8.dp)
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
                     ) {
-                        Icon(Icons.Default.GroupAdd, contentDescription = null)
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Create Your First Group")
+                        Text("Create a New Group", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Secondary Action: Join with Invite Code
+                    FilledTonalButton(
+                        onClick = onNavigateToJoinGroup,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Icon(Icons.Outlined.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Join with Invite Code", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
                     }
                 }
             }

@@ -112,7 +112,10 @@ fun SplitTrackerNavGraph() {
             GroupSettingsScreen(
                 groupId = route.groupId,
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onGroupDeleted = {
+                    navController.popBackStack<HomeRoute>(inclusive = false)
+                }
             )
         }
 
