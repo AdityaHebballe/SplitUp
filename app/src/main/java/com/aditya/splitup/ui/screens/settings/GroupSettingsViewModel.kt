@@ -118,7 +118,7 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
                     syncRepo.startSync(firestoreId, currentGroup.id)
                 }
 
-                val code = inviteRepo.createInvite(firestoreId)
+                val code = inviteRepo.createInvite(firestoreId, currentGroup.name)
                 _inviteCode.value = code
             } catch (e: Exception) {
                 Log.e("GroupSettingsVM", "Failed to generate invite", e)

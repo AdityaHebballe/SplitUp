@@ -46,9 +46,13 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     if (existingGroup != null) {
                         _state.value = JoinState.AlreadyMember(existingGroup.id, invite.groupName)
                     } else {
-                        val members = syncRepo.firestore.getGroupMembers(invite.groupFirestoreId)
+                        val memberCount = try {
+                            syncRepo.firestore.getGroupMembers(invite.groupFirestoreId).size
+                        } catch (_: Exception) {
+                            1
+                        }
                         pendingInvite = invite
-                        _state.value = JoinState.Preview(invite, members.size)
+                        _state.value = JoinState.Preview(invite, memberCount)
                     }
                 } else {
                     _state.value = JoinState.Error("Invalid or expired code. Check the code and try again.")

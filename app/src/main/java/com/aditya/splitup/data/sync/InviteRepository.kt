@@ -23,7 +23,7 @@ class InviteRepository {
     private val auth = Firebase.auth
 
     /** Creates an invite code for the given Firestore group and returns the 6-char code. */
-    suspend fun createInvite(groupFirestoreId: String): String {
+    suspend fun createInvite(groupFirestoreId: String, groupName: String = ""): String {
         val uid = auth.currentUser?.uid ?: error("Not authenticated")
 
         // Clean up any existing invites for this group to keep collection lean
@@ -43,6 +43,7 @@ class InviteRepository {
         db.collection("invites").document(code).set(
             hashMapOf(
                 "groupId" to groupFirestoreId,
+                "groupName" to groupName,
                 "createdByUid" to uid,
                 "createdAt" to Timestamp(now),
                 "expiresAt" to Timestamp(expires)
@@ -78,9 +79,15 @@ class InviteRepository {
 
         val groupId = doc.getString("groupId") ?: return null
 
-        // Fetch group name for preview
-        val groupName = db.collection("groups").document(groupId).get().await()
-            .getString("name") ?: "Unknown Group"
+        // Fetch group name from invite doc, fallback to groups collection
+        var groupName = doc.getString("groupName")
+        if (groupName.isNullOrBlank()) {
+            groupName = try {
+                db.collection("groups").document(groupId).get().await().getString("name") ?: "Unknown Group"
+            } catch (_: Exception) {
+                "Unknown Group"
+            }
+        }
 
         return InviteInfo(code = normalised, groupFirestoreId = groupId, groupName = groupName)
     }

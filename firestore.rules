@@ -2,13 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Groups: Members can read, any authenticated user can create, owner can delete
+    // Groups: Any authenticated user can read group info (needed for invite lookup and preview)
     match /groups/{groupId} {
-      allow read: if request.auth != null && (
-        resource == null ||
-        request.auth.uid in resource.data.memberUids ||
-        resource.data.ownerUid == request.auth.uid
-      );
+      allow read: if request.auth != null;
       allow create: if request.auth != null;
       allow update: if request.auth != null && (
         request.auth.uid in resource.data.memberUids ||
