@@ -22,6 +22,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE firestoreId = :firestoreId LIMIT 1")
     suspend fun getExpenseByFirestoreId(firestoreId: String): Expense?
 
+    @Query("SELECT * FROM expenses WHERE id = :id LIMIT 1")
+    suspend fun getExpenseById(id: Long): Expense?
+
     @Insert
     suspend fun insertExpense(expense: Expense): Long
 

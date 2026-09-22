@@ -20,6 +20,9 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE firestoreId = :firestoreId LIMIT 1")
     suspend fun getPaymentByFirestoreId(firestoreId: String): Payment?
 
+    @Query("SELECT * FROM payments WHERE id = :id LIMIT 1")
+    suspend fun getPaymentById(id: Long): Payment?
+
     @Insert
     suspend fun insertPayment(payment: Payment): Long
 

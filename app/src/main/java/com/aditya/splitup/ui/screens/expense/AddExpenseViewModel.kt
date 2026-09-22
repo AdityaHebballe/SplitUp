@@ -10,6 +10,7 @@ import com.aditya.splitup.data.model.ExpenseSplit
 import com.aditya.splitup.data.model.Member
 import com.aditya.splitup.data.model.SplitGroup
 import com.aditya.splitup.data.sync.SyncRepository
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -49,28 +50,37 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
         ratios: Map<Long, Int>,
         onSuccess: () -> Unit
     ) {
-        val groupId = _group.value?.id ?: return
-        val currentGroup = _group.value ?: return
+        val currentGroup = _group.value
+        if (currentGroup == null) {
+            Log.w("AddExpenseViewModel", "Cannot save expense: group is null")
+            onSuccess()
+            return
+        }
         val uid = syncRepo.firestore.currentUid
         viewModelScope.launch {
-            val expense = Expense(
-                groupId = groupId,
-                paidByMemberId = paidByMemberId,
-                amount = amount,
-                currency = currency,
-                category = category,
-                description = description,
-                addedByUid = uid
-            )
-            val splits = ratios.map { (memberId, ratioPart) ->
-                ExpenseSplit(
-                    expenseId = 0, // Assigned by DAO
-                    memberId = memberId,
-                    ratioPart = ratioPart
+            try {
+                val expense = Expense(
+                    groupId = currentGroup.id,
+                    paidByMemberId = paidByMemberId,
+                    amount = amount,
+                    currency = currency,
+                    category = category,
+                    description = description,
+                    addedByUid = uid
                 )
+                val splits = ratios.map { (memberId, ratioPart) ->
+                    ExpenseSplit(
+                        expenseId = 0, // Assigned by DAO
+                        memberId = memberId,
+                        ratioPart = ratioPart
+                    )
+                }
+                syncRepo.addExpense(currentGroup, expense, splits)
+            } catch (e: Exception) {
+                Log.e("AddExpenseViewModel", "Error saving expense", e)
+            } finally {
+                onSuccess()
             }
-            syncRepo.addExpense(currentGroup, expense, splits)
-            onSuccess()
         }
     }
 
@@ -88,27 +98,36 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
         ratios: Map<Long, Int>,
         onSuccess: () -> Unit
     ) {
-        val groupId = _group.value?.id ?: return
-        val currentGroup = _group.value ?: return
-        viewModelScope.launch {
-            val expense = Expense(
-                id = expenseId,
-                groupId = groupId,
-                paidByMemberId = paidByMemberId,
-                amount = amount,
-                currency = currency,
-                category = category,
-                description = description
-            )
-            val splits = ratios.map { (memberId, ratioPart) ->
-                ExpenseSplit(
-                    expenseId = expenseId,
-                    memberId = memberId,
-                    ratioPart = ratioPart
-                )
-            }
-            syncRepo.updateExpense(currentGroup, expense, splits)
+        val currentGroup = _group.value
+        if (currentGroup == null) {
+            Log.w("AddExpenseViewModel", "Cannot update expense: group is null")
             onSuccess()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val expense = Expense(
+                    id = expenseId,
+                    groupId = currentGroup.id,
+                    paidByMemberId = paidByMemberId,
+                    amount = amount,
+                    currency = currency,
+                    category = category,
+                    description = description
+                )
+                val splits = ratios.map { (memberId, ratioPart) ->
+                    ExpenseSplit(
+                        expenseId = expenseId,
+                        memberId = memberId,
+                        ratioPart = ratioPart
+                    )
+                }
+                syncRepo.updateExpense(currentGroup, expense, splits)
+            } catch (e: Exception) {
+                Log.e("AddExpenseViewModel", "Error updating expense", e)
+            } finally {
+                onSuccess()
+            }
         }
     }
 }

@@ -66,38 +66,29 @@ fun SettleUpSheet(
         derivedStateOf { imeInsets.getBottom(density) > 0 }
     }
 
-    val dismissWithAnimation: () -> Unit = {
+    var isSaving by remember { mutableStateOf(false) }
+
+    val safeDismiss: () -> Unit = {
         focusManager.clearFocus()
         keyboardController?.hide()
         scope.launch {
             try {
                 sheetState.hide()
             } catch (_: Exception) {}
-        }.invokeOnCompletion {
             onDismiss()
         }
     }
 
     ModalBottomSheet(
-        onDismissRequest = {
-            if (isImeVisible) {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-            } else {
-                dismissWithAnimation()
-            }
-        },
-        sheetState = sheetState,
-        properties = ModalBottomSheetDefaults.properties(
-            shouldDismissOnBackPress = false
-        )
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
     ) {
         BackHandler(enabled = true) {
             if (isImeVisible) {
                 focusManager.clearFocus()
                 keyboardController?.hide()
             } else {
-                dismissWithAnimation()
+                safeDismiss()
             }
         }
 
@@ -312,24 +303,35 @@ fun SettleUpSheet(
             Button(
                 onClick = {
                     val parsed = amount.toDoubleOrNull()
-                    if (parsed != null && parsed > 0 && fromMemberId != toMemberId) {
+                    if (parsed != null && parsed > 0 && fromMemberId != toMemberId && !isSaving) {
+                        isSaving = true
                         viewModel.recordPayment(
                             fromMemberId = fromMemberId,
                             toMemberId = toMemberId,
                             amount = parsed,
                             currency = currency,
-                            onSuccess = dismissWithAnimation
+                            onSuccess = safeDismiss
                         )
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                enabled = (amount.toDoubleOrNull() ?: 0.0) > 0.0 && fromMemberId != toMemberId
+                enabled = !isSaving && (amount.toDoubleOrNull() ?: 0.0) > 0.0 && fromMemberId != toMemberId
             ) {
-                Icon(Icons.Filled.Payments, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Record Settle Up", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Recording…", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                } else {
+                    Icon(Icons.Filled.Payments, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Record Settle Up", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

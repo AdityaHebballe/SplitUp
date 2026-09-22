@@ -100,38 +100,29 @@ fun AddExpenseSheet(
         derivedStateOf { imeInsets.getBottom(density) > 0 }
     }
 
-    val dismissWithAnimation: () -> Unit = {
+    var isSaving by remember { mutableStateOf(false) }
+
+    val safeDismiss: () -> Unit = {
         focusManager.clearFocus()
         keyboardController?.hide()
         scope.launch {
             try {
                 sheetState.hide()
             } catch (_: Exception) {}
-        }.invokeOnCompletion {
             onDismiss()
         }
     }
 
     ModalBottomSheet(
-        onDismissRequest = {
-            if (isImeVisible) {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-            } else {
-                dismissWithAnimation()
-            }
-        },
-        sheetState = sheetState,
-        properties = ModalBottomSheetDefaults.properties(
-            shouldDismissOnBackPress = false
-        )
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
     ) {
         BackHandler(enabled = true) {
             if (isImeVisible) {
                 focusManager.clearFocus()
                 keyboardController?.hide()
             } else {
-                dismissWithAnimation()
+                safeDismiss()
             }
         }
 
@@ -307,7 +298,8 @@ fun AddExpenseSheet(
                     onClick = {
                         val amountVal = amount.toDoubleOrNull()
                         val payerId = paidByMemberId
-                        if (amountVal != null && amountVal > 0 && payerId != null) {
+                        if (amountVal != null && amountVal > 0 && payerId != null && !isSaving) {
+                            isSaving = true
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (expenseToEdit == null) {
                                 viewModel.saveExpense(
@@ -317,7 +309,7 @@ fun AddExpenseSheet(
                                     category = category,
                                     paidByMemberId = payerId,
                                     ratios = ratios,
-                                    onSuccess = dismissWithAnimation
+                                    onSuccess = safeDismiss
                                 )
                             } else {
                                 viewModel.updateExpense(
@@ -328,7 +320,7 @@ fun AddExpenseSheet(
                                     category = category,
                                     paidByMemberId = payerId,
                                     ratios = ratios,
-                                    onSuccess = dismissWithAnimation
+                                    onSuccess = safeDismiss
                                 )
                             }
                         }
@@ -336,9 +328,19 @@ fun AddExpenseSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    enabled = (amount.toDoubleOrNull() ?: 0.0) > 0.0 && paidByMemberId != null
+                    enabled = !isSaving && (amount.toDoubleOrNull() ?: 0.0) > 0.0 && paidByMemberId != null
                 ) {
-                    Text(if (expenseToEdit == null) "Add Expense" else "Save Changes")
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (expenseToEdit == null) "Adding Expense…" else "Saving Changes…")
+                    } else {
+                        Text(if (expenseToEdit == null) "Add Expense" else "Save Changes")
+                    }
                 }
             }
         }
