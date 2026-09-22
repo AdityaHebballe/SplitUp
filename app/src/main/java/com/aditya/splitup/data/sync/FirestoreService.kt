@@ -1,0 +1,204 @@
+package com.aditya.splitup.data.sync
+
+import com.aditya.splitup.data.model.Expense
+import com.aditya.splitup.data.model.ExpenseSplit
+import com.aditya.splitup.data.model.Member
+import com.aditya.splitup.data.model.Payment
+import com.aditya.splitup.data.model.SplitGroup
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.tasks.await
+
+/**
+ * Low-level Firestore CRUD layer. Translates between Room entities and Firestore documents.
+ * All write operations return the Firestore document ID.
+ */
+class FirestoreService {
+    private val db = Firebase.firestore
+    val auth = Firebase.auth
+
+    val currentUid: String? get() = auth.currentUser?.uid
+
+    // ─── Groups ───────────────────────────────────────────────────────────────
+
+    suspend fun createGroup(group: SplitGroup): String {
+        val uid = currentUid ?: error("Not authenticated")
+        val doc = db.collection("groups").add(
+            hashMapOf(
+                "name" to group.name,
+                "defaultCurrency" to group.defaultCurrency,
+                "ownerUid" to uid,
+                "memberUids" to listOf(uid),
+                "createdAt" to group.createdAt
+            )
+        ).await()
+        return doc.id
+    }
+
+    suspend fun updateGroup(group: SplitGroup) {
+        val fsId = group.firestoreId ?: return
+        db.collection("groups").document(fsId).update(
+            mapOf(
+                "name" to group.name,
+                "defaultCurrency" to group.defaultCurrency,
+                "defaultPayerMemberId" to group.defaultPayerMemberId
+            )
+        ).await()
+    }
+
+    suspend fun getGroupName(firestoreGroupId: String): String? {
+        return db.collection("groups").document(firestoreGroupId).get().await()
+            .getString("name")
+    }
+
+    suspend fun addUserToGroup(firestoreGroupId: String, uid: String) {
+        db.collection("groups").document(firestoreGroupId)
+            .update("memberUids", FieldValue.arrayUnion(uid))
+            .await()
+    }
+
+    // ─── Members ──────────────────────────────────────────────────────────────
+
+    suspend fun addMember(groupId: String, member: Member, linkedUid: String? = null): String {
+        val doc = db.collection("groups/$groupId/members").add(
+            hashMapOf(
+                "name" to member.name,
+                "defaultRatioPart" to member.defaultRatioPart,
+                "linkedUid" to linkedUid
+            )
+        ).await()
+        if (linkedUid != null) {
+            addUserToGroup(groupId, linkedUid)
+        }
+        return doc.id
+    }
+
+    suspend fun updateMember(groupId: String, member: Member) {
+        val fsId = member.firestoreId ?: return
+        db.collection("groups/$groupId/members").document(fsId).update(
+            mapOf(
+                "name" to member.name,
+                "defaultRatioPart" to member.defaultRatioPart,
+                "linkedUid" to member.linkedUid
+            )
+        ).await()
+    }
+
+    suspend fun deleteMember(groupId: String, memberFirestoreId: String) {
+        db.collection("groups/$groupId/members").document(memberFirestoreId).delete().await()
+    }
+
+    // ─── Expenses ─────────────────────────────────────────────────────────────
+
+    suspend fun addExpense(
+        groupId: String,
+        expense: Expense,
+        splits: List<ExpenseSplit>,
+        memberFsIdMap: Map<Long, String>  // localMemberId → firestoreId
+    ): String {
+        val uid = currentUid
+        val expRef = db.collection("groups/$groupId/expenses").add(
+            hashMapOf(
+                "paidByMemberFsId" to (memberFsIdMap[expense.paidByMemberId] ?: ""),
+                "amount" to expense.amount,
+                "currency" to expense.currency,
+                "category" to expense.category,
+                "description" to expense.description,
+                "addedByUid" to uid,
+                "createdAt" to expense.createdAt
+            )
+        ).await()
+
+        val batch = db.batch()
+        for (split in splits) {
+            val splitRef = db.collection("groups/$groupId/expenses/${expRef.id}/splits").document()
+            batch.set(
+                splitRef, hashMapOf(
+                    "memberFsId" to (memberFsIdMap[split.memberId] ?: ""),
+                    "ratioPart" to split.ratioPart
+                )
+            )
+        }
+        batch.commit().await()
+        return expRef.id
+    }
+
+    suspend fun deleteExpense(groupId: String, expenseFirestoreId: String) {
+        db.collection("groups/$groupId/expenses").document(expenseFirestoreId).delete().await()
+    }
+
+    // ─── Payments ─────────────────────────────────────────────────────────────
+
+    suspend fun addPayment(
+        groupId: String,
+        payment: Payment,
+        memberFsIdMap: Map<Long, String>
+    ): String {
+        val uid = currentUid
+        val doc = db.collection("groups/$groupId/payments").add(
+            hashMapOf(
+                "fromMemberFsId" to (memberFsIdMap[payment.fromMemberId] ?: ""),
+                "toMemberFsId" to (memberFsIdMap[payment.toMemberId] ?: ""),
+                "amount" to payment.amount,
+                "currency" to payment.currency,
+                "addedByUid" to uid,
+                "createdAt" to payment.createdAt
+            )
+        ).await()
+        return doc.id
+    }
+
+    // ─── Listeners ────────────────────────────────────────────────────────────
+
+    fun observeMembers(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
+        return db.collection("groups/$groupId/members")
+            .addSnapshotListener { snaps, err ->
+                if (err != null || snaps == null) return@addSnapshotListener
+                val list = snaps.documents.map { doc ->
+                    doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
+                }
+                onUpdate(list)
+            }
+    }
+
+    fun observeExpenses(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
+        return db.collection("groups/$groupId/expenses")
+            .addSnapshotListener { snaps, err ->
+                if (err != null || snaps == null) return@addSnapshotListener
+                val list = snaps.documents.map { doc ->
+                    doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
+                }
+                onUpdate(list)
+            }
+    }
+
+    fun observePayments(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
+        return db.collection("groups/$groupId/payments")
+            .addSnapshotListener { snaps, err ->
+                if (err != null || snaps == null) return@addSnapshotListener
+                val list = snaps.documents.map { doc ->
+                    doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
+                }
+                onUpdate(list)
+            }
+    }
+
+    suspend fun getExpenseSplits(groupId: String, expenseFirestoreId: String): List<Map<String, Any?>> {
+        return db.collection("groups/$groupId/expenses/$expenseFirestoreId/splits")
+            .get().await().documents.map { doc ->
+                doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
+            }
+    }
+
+    // ─── Full group fetch (for join preview) ──────────────────────────────────
+
+    suspend fun getGroupMembers(firestoreGroupId: String): List<Map<String, Any?>> {
+        return db.collection("groups/$firestoreGroupId/members")
+            .get().await().documents.map { doc ->
+                doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
+            }
+    }
+}

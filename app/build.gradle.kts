@@ -3,14 +3,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
 }
 
 android {
-    namespace = "com.example.expensetracker"
+    namespace = "com.aditya.splitup"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.expensetracker"
+        applicationId = "com.aditya.splitup"
         minSdk = 33
         targetSdk = 36
         versionCode = 1
@@ -62,6 +63,11 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
 
     // Test
     testImplementation(libs.junit)

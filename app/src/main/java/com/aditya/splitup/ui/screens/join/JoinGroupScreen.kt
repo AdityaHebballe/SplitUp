@@ -1,0 +1,277 @@
+package com.aditya.splitup.ui.screens.join
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aditya.splitup.ui.theme.HeroCardShape
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun JoinGroupScreen(
+    viewModel: JoinGroupViewModel,
+    onNavigateBack: () -> Unit,
+    onGroupJoined: (Long) -> Unit
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val haptic = LocalHapticFeedback.current
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Join a Group") },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (state is JoinState.Preview) viewModel.resetToEnterCode()
+                        else onNavigateBack()
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "JoinStateTransition",
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp)
+        ) { currentState ->
+            when (currentState) {
+                is JoinState.EnterCode, is JoinState.Error -> {
+                    EnterCodeStep(
+                        error = (currentState as? JoinState.Error)?.message,
+                        onLookup = { code ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.lookupCode(code)
+                        }
+                    )
+                }
+
+                JoinState.Loading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(16.dp))
+                            Text("Looking up invite…", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+
+                is JoinState.Preview -> {
+                    EnterNameStep(
+                        groupName = currentState.invite.groupName,
+                        memberCount = currentState.memberCount,
+                        onJoin = { name ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.joinGroup(name, onGroupJoined)
+                        }
+                    )
+                }
+
+                JoinState.Success -> {
+                    // Navigation handled by ViewModel callback — show brief success state
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("✓ Joined!", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnterCodeStep(
+    error: String?,
+    onLookup: (String) -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(32.dp))
+
+        Surface(
+            shape = HeroCardShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(80.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Key,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Enter invite code",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Ask the group creator to share their invite code with you.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        OutlinedTextField(
+            value = code,
+            onValueChange = { code = it.uppercase().take(6) },
+            label = { Text("6-character code") },
+            placeholder = { Text("e.g. AB3X7K") },
+            isError = error != null,
+            supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                imeAction = ImeAction.Go
+            ),
+            keyboardActions = KeyboardActions(onGo = { if (code.length == 6) onLookup(code) }),
+            shape = RoundedCornerShape(16.dp),
+            textStyle = MaterialTheme.typography.headlineSmall.copy(
+                letterSpacing = 6.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = { onLookup(code) },
+            enabled = code.length == 6,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Look Up Group")
+        }
+    }
+}
+
+@Composable
+private fun EnterNameStep(
+    groupName: String,
+    memberCount: Int,
+    onJoin: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(32.dp))
+
+        Surface(
+            shape = HeroCardShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.size(80.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            groupName,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "$memberCount member${if (memberCount != 1) "s" else ""} already in this group",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        Text(
+            "What's your name?",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "You'll be added as a new member in this group.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Your name") },
+            leadingIcon = {
+                Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Go
+            ),
+            keyboardActions = KeyboardActions(onGo = { if (name.isNotBlank()) onJoin(name.trim()) }),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = { onJoin(name.trim()) },
+            enabled = name.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Join as \"${name.ifBlank { "..." }}\"")
+        }
+    }
+}

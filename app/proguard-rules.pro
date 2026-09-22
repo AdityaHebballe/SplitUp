@@ -18,10 +18,13 @@
 }
 
 # Keep Data & Network Models
--keep class com.example.expensetracker.data.model.** { *; }
--keep class com.example.expensetracker.data.network.** { *; }
+-keep class com.aditya.splitup.data.model.** { *; }
+-keep class com.aditya.splitup.data.network.** { *; }
+-keep class com.aditya.splitup.data.sync.** { *; }
 
-# Room
+# Firebase
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.firebase.**
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.paging.**
 
