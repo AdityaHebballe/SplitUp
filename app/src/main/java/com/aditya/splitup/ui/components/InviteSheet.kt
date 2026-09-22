@@ -2,31 +2,37 @@ package com.aditya.splitup.ui.components
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aditya.splitup.ui.theme.HeroCardShape
 
 /**
- * Bottom sheet that shows a group invite code with copy + share options.
- * Shown from Group Settings when the user taps "Invite Members".
+ * Material 3 Expressive bottom sheet for displaying and sharing group invite codes.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -39,168 +45,289 @@ fun InviteSheet(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
     var copied by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 40.dp),
+                .padding(bottom = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Expressive Icon Avatar
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.GroupAdd,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             Text(
-                "Invite to Group",
+                text = "Invite to Group",
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(Modifier.height(4.dp))
+
+            Spacer(Modifier.height(6.dp))
+
             Text(
-                "Share this code — it expires in 24 hours",
+                text = "Share this invite code with a friend so they can join and sync expenses live.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
             )
 
             Spacer(Modifier.height(24.dp))
 
             AnimatedContent(
-                targetState = inviteCode,
+                targetState = Triple(inviteCode, isGenerating, errorMessage),
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "InviteCodeTransition"
-            ) { code ->
-                if (code != null) {
-                    // Big code display
-                    Surface(
+                label = "InviteContentTransition"
+            ) { (code, loading, error) ->
+                if (loading) {
+                    // Loading State
+                    ElevatedCard(
                         shape = HeroCardShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.fillMaxWidth()
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(170.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Text(
-                                text = code,
-                                style = MaterialTheme.typography.displaySmall.copy(
-                                    letterSpacing = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                ),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(36.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 3.dp
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Timer,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                                )
-                                Text(
-                                    "Valid for 24 hours",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                                )
-                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "Generating invite code…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-
-                    Spacer(Modifier.height(20.dp))
-
-                    // Action row
-                    Row(
+                } else if (code != null) {
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Copy button
-                        OutlinedButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(code))
-                                copied = true
-                            },
-                            modifier = Modifier.weight(1f)
+                        // Hero Code Display Card
+                        ElevatedCard(
+                            shape = RoundedCornerShape(28.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                            ),
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(
-                                if (copied) Icons.Outlined.ContentCopy else Icons.Outlined.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (copied) "Copied!" else "Copy Code")
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp, horizontal = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "INVITE CODE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 2.sp
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = code,
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 8.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Timer,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.outline
+                                        )
+                                        Text(
+                                            text = "Expires in 24 hours",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
 
-                        // Share button
+                        // Share Button (Primary Action)
+                        val shareInteractionSource = rememberPressInteractionSource()
                         Button(
                             onClick = {
-                                val shareText = "Join my SplitUp group! Use code: $code\n\nOpen SplitUp → Join Group → Enter code above."
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val shareText = "Join my SplitUp group! Use invite code: $code\n\nOpen SplitUp → tap 'Join Group' icon → enter the code above."
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 }
-                                context.startActivity(Intent.createChooser(intent, "Share invite"))
+                                context.startActivity(Intent.createChooser(intent, "Share invite code"))
                             },
-                            modifier = Modifier.weight(1f)
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .pressScale(shareInteractionSource),
+                            interactionSource = shareInteractionSource
                         ) {
                             Icon(
                                 Icons.Outlined.Share,
                                 contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = "Share Invite",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Copy Button (Secondary Action, below Share Button)
+                        val copyInteractionSource = rememberPressInteractionSource()
+                        FilledTonalButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                clipboardManager.setText(AnnotatedString(code))
+                                copied = true
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            colors = if (copied) {
+                                ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            } else {
+                                ButtonDefaults.filledTonalButtonColors()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .pressScale(copyInteractionSource),
+                            interactionSource = copyInteractionSource
+                        ) {
+                            Icon(
+                                imageVector = if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                                contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Share")
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (copied) "Copied to Clipboard!" else "Copy Code",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
-                } else if (isGenerating) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp),
-                        contentAlignment = Alignment.Center
+                } else if (error != null) {
+                    // Error State
+                    ElevatedCard(
+                        shape = HeroCardShape,
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        CircularProgressIndicator()
-                    }
-                } else if (errorMessage != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
-                    ) {
-                        Text(
-                            text = errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = onGenerate,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("Try Again")
+                            Icon(
+                                Icons.Outlined.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Couldn't generate code",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = error,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(18.dp))
+                            Button(
+                                onClick = onGenerate,
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("Try Again")
+                            }
                         }
                     }
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Generate a 6-character code that your friend can use to join this group.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Button(
+                        onClick = onGenerate,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.GroupAdd,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(Modifier.height(20.dp))
-                        Button(
-                            onClick = onGenerate,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Generate Invite Code")
-                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Generate Invite Code",
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
                 }
             }
