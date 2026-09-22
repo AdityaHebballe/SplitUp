@@ -1,9 +1,16 @@
 package com.aditya.splitup.ui.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -16,12 +23,15 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -31,6 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aditya.splitup.data.model.SplitGroup
 import com.aditya.splitup.domain.CurrencyUtils
+import com.aditya.splitup.ui.components.pressScale
+import com.aditya.splitup.ui.components.rememberPressInteractionSource
 import com.aditya.splitup.ui.screens.expense.AddExpenseSheet
 import com.aditya.splitup.ui.screens.expense.AddExpenseViewModel
 import com.aditya.splitup.ui.theme.CardShape
@@ -45,8 +57,13 @@ fun HomeScreen(
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     var showQuickAddSheet by remember { mutableStateOf(false) }
+    var isFabMenuExpanded by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val listState = rememberLazyListState()
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) isFabMenuExpanded = false
+    }
 
     val addExpenseViewModel: AddExpenseViewModel = viewModel()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -63,11 +80,11 @@ fun HomeScreen(
                 },
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    // Distinct "Join" button with Key icon and text
+                    // Distinct "Join" button with Key icon and text in TopAppBar
                     FilledTonalButton(
                         onClick = onNavigateToJoinGroup,
                         shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier.height(38.dp)
                     ) {
                         Icon(
@@ -78,46 +95,131 @@ fun HomeScreen(
                         Spacer(Modifier.width(6.dp))
                         Text("Join", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(Modifier.width(8.dp))
-                    // Distinct "New Group" primary button with Add icon and text
-                    Button(
-                        onClick = onNavigateToCreateGroup,
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                        modifier = Modifier.height(38.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("New", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    }
                 }
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                expanded = !listState.isScrollInProgress,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (groups.isEmpty()) {
-                        onNavigateToCreateGroup()
-                    } else {
-                        showQuickAddSheet = true
+            if (groups.isNotEmpty()) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Option 1: New Group
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
+                                scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)),
+                        exit = fadeOut(animationSpec = spring(stiffness = Spring.StiffnessHigh)) +
+                               scaleOut(animationSpec = spring(stiffness = Spring.StiffnessHigh))
+                    ) {
+                        val interaction = rememberPressInteractionSource()
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .pressScale(interaction)
+                                .clickable(
+                                    interactionSource = interaction,
+                                    indication = ripple()
+                                ) {
+                                    isFabMenuExpanded = false
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onNavigateToCreateGroup()
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.GroupAdd,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "New Group",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
-                },
-                icon = {
-                    Icon(
-                        if (groups.isEmpty()) Icons.Default.GroupAdd else Icons.AutoMirrored.Filled.ReceiptLong,
-                        contentDescription = null
+
+                    // Option 2: Log Expense
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
+                                scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)),
+                        exit = fadeOut(animationSpec = spring(stiffness = Spring.StiffnessHigh)) +
+                               scaleOut(animationSpec = spring(stiffness = Spring.StiffnessHigh))
+                    ) {
+                        val interaction = rememberPressInteractionSource()
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .pressScale(interaction)
+                                .clickable(
+                                    interactionSource = interaction,
+                                    indication = ripple()
+                                ) {
+                                    isFabMenuExpanded = false
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showQuickAddSheet = true
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ReceiptLong,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Log Expense",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+
+                    // Main FAB: Rotates 45 degrees to "x" with spring physics
+                    val rotation by animateFloatAsState(
+                        targetValue = if (isFabMenuExpanded) 45f else 0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                        label = "FabRotation"
                     )
-                },
-                text = {
-                    Text(if (groups.isEmpty()) "Create Group" else "Log Expense")
+                    FloatingActionButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isFabMenuExpanded = !isFabMenuExpanded
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = if (isFabMenuExpanded) "Close actions" else "Add actions",
+                            modifier = Modifier
+                                .size(26.dp)
+                                .rotate(rotation)
+                        )
+                    }
                 }
-            )
+            }
         }
     ) { padding ->
         if (groups.isEmpty()) {
@@ -224,6 +326,21 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+
+        // Touch dismiss scrim for Speed Dial FAB
+        if (isFabMenuExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        isFabMenuExpanded = false
+                    }
+            )
         }
     }
 
