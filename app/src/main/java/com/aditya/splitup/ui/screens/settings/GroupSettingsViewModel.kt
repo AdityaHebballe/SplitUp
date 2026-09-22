@@ -36,10 +36,15 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
     private val _inviteErrorMessage = MutableStateFlow<String?>(null)
     val inviteErrorMessage: StateFlow<String?> = _inviteErrorMessage.asStateFlow()
 
+    val currentUid: String? get() = syncRepo.firestore.currentUid
+
     fun loadGroup(groupId: Long) {
         viewModelScope.launch {
-            repository.getGroupById(groupId).collect { 
-                _group.value = it 
+            repository.getGroupById(groupId).collect { grp ->
+                _group.value = grp
+                if (grp?.firestoreId != null) {
+                    syncRepo.startSync(grp.firestoreId, grp.id)
+                }
             }
         }
         viewModelScope.launch {
@@ -102,7 +107,7 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
             if (currentGroup.firestoreId != null) {
                 try {
                     fsId = syncRepo.firestore.addMember(
-                        currentGroup.firestoreId!!,
+                        currentGroup.firestoreId,
                         Member(groupId = currentGroup.id, name = name)
                     )
                 } catch (e: Exception) {
@@ -122,14 +127,39 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
     fun removeMember(member: Member) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
+            val hasExpenses = db.expenseDao().getExpensesByGroupOnce(currentGroup.id).any { it.paidByMemberId == member.id }
+            val hasPayments = db.paymentDao().getPaymentsByGroupOnce(currentGroup.id).any { it.fromMemberId == member.id || it.toMemberId == member.id }
+            val isReferenced = hasExpenses || hasPayments
+
             if (currentGroup.firestoreId != null && member.firestoreId != null) {
                 try {
-                    syncRepo.firestore.deleteMember(currentGroup.firestoreId!!, member.firestoreId!!)
+                    if (isReferenced) {
+                        syncRepo.firestore.unlinkMember(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
+                    } else {
+                        syncRepo.firestore.deleteMember(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
+                    }
                 } catch (e: Exception) {
-                    Log.e("GroupSettingsVM", "Failed to delete member from Firestore", e)
+                    Log.e("GroupSettingsVM", "Failed to remove member in Firestore", e)
                 }
             }
-            repository.deleteMember(member)
+
+            if (isReferenced) {
+                repository.updateMember(member.copy(linkedUid = null))
+            } else {
+                try {
+                    repository.deleteMember(member)
+                } catch (_: Exception) {
+                    repository.updateMember(member.copy(linkedUid = null))
+                }
+            }
+        }
+    }
+
+    fun leaveGroup(onSuccess: () -> Unit) {
+        val currentGroup = _group.value ?: return
+        viewModelScope.launch {
+            syncRepo.deleteGroup(currentGroup, isOwner = false)
+            onSuccess()
         }
     }
 

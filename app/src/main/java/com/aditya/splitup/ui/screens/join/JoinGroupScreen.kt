@@ -57,7 +57,7 @@ fun JoinGroupScreen(
                 title = { Text("Join a Group") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (state is JoinState.Preview || state is JoinState.AlreadyMember) viewModel.resetToEnterCode()
+                        if (state is JoinState.Preview || state is JoinState.AlreadyMember || state is JoinState.Rejoin) viewModel.resetToEnterCode()
                         else onNavigateBack()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -107,6 +107,25 @@ fun JoinGroupScreen(
                     )
                 }
 
+                is JoinState.Rejoin -> {
+                    RejoinStep(
+                        groupName = currentState.invite.groupName,
+                        memberName = currentState.memberName,
+                        onRejoin = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.rejoinGroup(
+                                memberFsId = currentState.memberFsId,
+                                memberName = currentState.memberName,
+                                onSuccess = onGroupJoined
+                            )
+                        },
+                        onJoinAsNew = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.enterAsNewMember()
+                        }
+                    )
+                }
+
                 is JoinState.Preview -> {
                     EnterNameStep(
                         groupName = currentState.invite.groupName,
@@ -125,6 +144,83 @@ fun JoinGroupScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RejoinStep(
+    groupName: String,
+    memberName: String,
+    onRejoin: () -> Unit,
+    onJoinAsNew: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(32.dp))
+
+        Surface(
+            shape = HeroCardShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(80.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Text(
+            groupName,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Welcome back! You were previously in this group as $memberName.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = onRejoin,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
+            Text(
+                "Rejoin as $memberName",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = onJoinAsNew,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
+            Text(
+                "Join as a new member instead",
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }

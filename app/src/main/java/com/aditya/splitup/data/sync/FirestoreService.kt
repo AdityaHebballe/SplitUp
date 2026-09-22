@@ -96,7 +96,47 @@ class FirestoreService {
         ).await()
     }
 
-    suspend fun deleteMember(groupId: String, memberFirestoreId: String) {
+    suspend fun reclaimMember(groupId: String, memberFsId: String, uid: String) {
+        db.collection("groups/$groupId/members").document(memberFsId).update(
+            mapOf(
+                "linkedUid" to uid,
+                "previousUid" to null
+            )
+        ).await()
+        addUserToGroup(groupId, uid)
+    }
+
+    suspend fun claimUnlinkedMember(groupId: String, memberFsId: String, uid: String, name: String) {
+        db.collection("groups/$groupId/members").document(memberFsId).update(
+            mapOf(
+                "name" to name,
+                "linkedUid" to uid,
+                "previousUid" to null
+            )
+        ).await()
+        addUserToGroup(groupId, uid)
+    }
+
+    suspend fun unlinkMember(groupId: String, memberFirestoreId: String, linkedUid: String? = null) {
+        if (linkedUid != null) {
+            db.collection("groups").document(groupId)
+                .update("memberUids", FieldValue.arrayRemove(linkedUid)).await()
+        }
+        db.collection("groups/$groupId/members").document(memberFirestoreId).update(
+            mapOf(
+                "linkedUid" to null,
+                "previousUid" to linkedUid
+            )
+        ).await()
+    }
+
+    suspend fun deleteMember(groupId: String, memberFirestoreId: String, linkedUid: String? = null) {
+        if (linkedUid != null) {
+            try {
+                db.collection("groups").document(groupId)
+                    .update("memberUids", FieldValue.arrayRemove(linkedUid)).await()
+            } catch (_: Exception) {}
+        }
         db.collection("groups/$groupId/members").document(memberFirestoreId).delete().await()
     }
 
@@ -185,7 +225,11 @@ class FirestoreService {
     fun observeGroup(groupId: String, onUpdate: (Map<String, Any?>) -> Unit): ListenerRegistration {
         return db.collection("groups").document(groupId)
             .addSnapshotListener { snap, err ->
-                if (err != null || snap == null || !snap.exists()) return@addSnapshotListener
+                if (err != null) {
+                    android.util.Log.e("FirestoreService", "observeGroup error for $groupId", err)
+                    return@addSnapshotListener
+                }
+                if (snap == null || !snap.exists()) return@addSnapshotListener
                 val data = snap.data?.plus("_fsId" to snap.id) ?: mapOf("_fsId" to snap.id)
                 onUpdate(data)
             }
@@ -194,7 +238,11 @@ class FirestoreService {
     fun observeMembers(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
         return db.collection("groups/$groupId/members")
             .addSnapshotListener { snaps, err ->
-                if (err != null || snaps == null) return@addSnapshotListener
+                if (err != null) {
+                    android.util.Log.e("FirestoreService", "observeMembers error for $groupId", err)
+                    return@addSnapshotListener
+                }
+                if (snaps == null) return@addSnapshotListener
                 val list = snaps.documents.map { doc ->
                     doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
                 }
@@ -205,7 +253,11 @@ class FirestoreService {
     fun observeExpenses(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
         return db.collection("groups/$groupId/expenses")
             .addSnapshotListener { snaps, err ->
-                if (err != null || snaps == null) return@addSnapshotListener
+                if (err != null) {
+                    android.util.Log.e("FirestoreService", "observeExpenses error for $groupId", err)
+                    return@addSnapshotListener
+                }
+                if (snaps == null) return@addSnapshotListener
                 val list = snaps.documents.map { doc ->
                     doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
                 }
@@ -216,7 +268,11 @@ class FirestoreService {
     fun observePayments(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
         return db.collection("groups/$groupId/payments")
             .addSnapshotListener { snaps, err ->
-                if (err != null || snaps == null) return@addSnapshotListener
+                if (err != null) {
+                    android.util.Log.e("FirestoreService", "observePayments error for $groupId", err)
+                    return@addSnapshotListener
+                }
+                if (snaps == null) return@addSnapshotListener
                 val list = snaps.documents.map { doc ->
                     doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
                 }
@@ -247,13 +303,17 @@ class FirestoreService {
     }
 
     suspend fun leaveGroup(firestoreGroupId: String, uid: String) {
-        db.collection("groups").document(firestoreGroupId)
-            .update("memberUids", FieldValue.arrayRemove(uid)).await()
+        try {
+            db.collection("groups").document(firestoreGroupId)
+                .update("memberUids", FieldValue.arrayRemove(uid)).await()
+        } catch (e: Exception) {
+            android.util.Log.e("FirestoreService", "Failed to remove $uid from memberUids", e)
+        }
 
         val memberDocs = db.collection("groups/$firestoreGroupId/members")
             .whereEqualTo("linkedUid", uid).get().await()
         for (doc in memberDocs.documents) {
-            doc.reference.update("linkedUid", null).await()
+            doc.reference.update(mapOf("linkedUid" to null, "previousUid" to uid)).await()
         }
     }
 

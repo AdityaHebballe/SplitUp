@@ -204,6 +204,12 @@ class SyncRepository(
                     } catch (e: Exception) {
                         Log.e("SyncRepository", "Failed to upload member ${m.name}", e)
                     }
+                } else {
+                    try {
+                        firestore.updateMember(fsGroupId, m)
+                    } catch (e: Exception) {
+                        Log.e("SyncRepository", "Failed to sync member ${m.name}", e)
+                    }
                 }
             }
 
@@ -282,7 +288,7 @@ class SyncRepository(
         for (doc in remoteDocs) {
             val fsId = doc["_fsId"] as String
             val name = doc["name"] as? String ?: continue
-            val ratio = (doc["defaultRatioPart"] as? Long)?.toInt() ?: 1
+            val ratio = (doc["defaultRatioPart"] as? Number)?.toInt() ?: 1
             val linkedUid = doc["linkedUid"] as? String
 
             val existing = localByFsId[fsId]
@@ -303,10 +309,24 @@ class SyncRepository(
             }
         }
 
-        // Delete locals no longer in remote
-        localMembers
-            .filter { it.firestoreId != null && it.firestoreId !in remoteFsIds }
-            .forEach { db.memberDao().deleteMember(it) }
+        // Delete locals no longer in remote (safely unlinking if referenced in expenses or payments)
+        val groupExpenses = db.expenseDao().getExpensesByGroupOnce(localGroupId)
+        val groupPayments = db.paymentDao().getPaymentsByGroupOnce(localGroupId)
+        val membersInExpenses = groupExpenses.map { it.paidByMemberId }.toSet()
+        val membersInPayments = groupPayments.flatMap { listOf(it.fromMemberId, it.toMemberId) }.toSet()
+
+        for (member in localMembers.filter { it.firestoreId != null && it.firestoreId !in remoteFsIds }) {
+            val isUsed = member.id in membersInExpenses || member.id in membersInPayments
+            if (isUsed) {
+                db.memberDao().updateMember(member.copy(linkedUid = null))
+            } else {
+                try {
+                    db.memberDao().deleteMember(member)
+                } catch (_: Exception) {
+                    db.memberDao().updateMember(member.copy(linkedUid = null))
+                }
+            }
+        }
 
         // Re-run expense and payment reconciliation with the updated members
         lastExpenseDocs[firestoreGroupId]?.let { docs ->

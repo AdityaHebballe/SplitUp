@@ -37,6 +37,7 @@ import com.aditya.splitup.ui.components.rememberPressInteractionSource
 import com.aditya.splitup.ui.theme.CardShape
 import com.aditya.splitup.ui.components.CurrencyPicker
 import com.aditya.splitup.ui.components.RatioEditor
+import com.aditya.splitup.data.model.Member
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -53,6 +54,8 @@ fun GroupSettingsScreen(
     val inviteErrorMessage by viewModel.inviteErrorMessage.collectAsStateWithLifecycle()
     var newMemberName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showSelfLeaveDialog by remember { mutableStateOf(false) }
+    var memberToRemove by remember { mutableStateOf<Member?>(null) }
     var showInviteSheet by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
 
@@ -196,6 +199,10 @@ fun GroupSettingsScreen(
             }
 
             items(members) { member ->
+                val currentUid = viewModel.currentUid
+                val isOwner = viewModel.isOwner
+                val isSelf = member.linkedUid != null && member.linkedUid == currentUid
+
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
@@ -216,7 +223,7 @@ fun GroupSettingsScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
+                                color = if (isSelf) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -224,23 +231,49 @@ fun GroupSettingsScreen(
                                         text = member.name.take(1).uppercase(),
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = if (isSelf) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
                             }
-                            Text(member.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(member.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                                if (isSelf) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "You",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        FilledTonalIconButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.removeMember(member)
-                            },
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
-                                contentColor = MaterialTheme.colorScheme.error
-                            )
-                        ) {
-                            Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove")
+                        if (isOwner || isSelf) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    if (isSelf) {
+                                        showSelfLeaveDialog = true
+                                    } else {
+                                        memberToRemove = member
+                                    }
+                                },
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (isSelf) Icons.AutoMirrored.Outlined.ExitToApp else Icons.Outlined.DeleteOutline,
+                                    contentDescription = if (isSelf) "Leave Group" else "Remove"
+                                )
+                            }
                         }
                     }
                 }
@@ -371,6 +404,79 @@ fun GroupSettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showSelfLeaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSelfLeaveDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Leave Group?") },
+            text = {
+                Text("Deleting your member profile will remove you from this group. Your expense history will be preserved for the other members. Are you sure you want to leave?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSelfLeaveDialog = false
+                        viewModel.leaveGroup(onSuccess = onGroupDeleted)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Leave Group", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSelfLeaveDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (memberToRemove != null) {
+        val target = memberToRemove!!
+        AlertDialog(
+            onDismissRequest = { memberToRemove = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Remove Member?") },
+            text = {
+                Text("Are you sure you want to remove ${target.name} from the group? Their existing expenses and splits will be preserved.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.removeMember(target)
+                        memberToRemove = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Remove", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { memberToRemove = null }) {
                     Text("Cancel")
                 }
             }
