@@ -62,6 +62,7 @@ fun BreakdownTab(
     val topExpenses by viewModel.topExpenses.collectAsStateWithLifecycle()
     val totalSpent by viewModel.totalSpent.collectAsStateWithLifecycle()
     val members by viewModel.members.collectAsStateWithLifecycle()
+    val rates by viewModel.rates.collectAsStateWithLifecycle()
     val memberMap = remember(members) { members.associateBy { it.id } }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
     val haptic = LocalHapticFeedback.current
@@ -267,14 +268,33 @@ fun BreakdownTab(
                                     val arcSize = Size(radius * 2, radius * 2)
 
                                     val capAngle = (strokeWidthPx / 2f / radius) * (180f / Math.PI.toFloat())
-                                    val targetGap = 5f
-                                    val maxDeduct = (fullSweep * 0.45f).coerceAtLeast(0f)
-                                    val totalDeduct = if (categorySpendings.size > 1) {
-                                        (capAngle * 2f + targetGap).coerceAtMost(maxDeduct)
-                                    } else 0f
+                                    val targetGap = 4f
+                                    // A round cap adds `capAngle` on each side (2 * capAngle total).
+                                    // A slice can safely use StrokeCap.Round without overlapping its neighbors
+                                    // only if its angular budget `fullSweep` can fit both caps plus the gap.
+                                    val canUseRoundCap = categorySpendings.size > 1 && fullSweep >= (capAngle * 2f + targetGap + 2f)
 
-                                    val sweepAngle = (fullSweep * animProgress.value - totalDeduct).coerceAtLeast(0.1f)
-                                    val startAngle = startAngles[index] + totalDeduct / 2f
+                                    val startAngle: Float
+                                    val sweepAngle: Float
+                                    val cap: StrokeCap
+
+                                    if (categorySpendings.size == 1) {
+                                        startAngle = startAngles[index]
+                                        sweepAngle = (fullSweep * animProgress.value).coerceAtLeast(0.1f)
+                                        cap = StrokeCap.Butt
+                                    } else if (canUseRoundCap) {
+                                        val totalDeduct = capAngle * 2f + targetGap
+                                        startAngle = startAngles[index] + capAngle + (targetGap / 2f)
+                                        sweepAngle = ((fullSweep - totalDeduct) * animProgress.value).coerceAtLeast(0.1f)
+                                        cap = StrokeCap.Round
+                                    } else {
+                                        // Small slices (< ~25°) cannot physically fit round caps without spilling into neighbors.
+                                        // Use StrokeCap.Butt with a clean gap to guarantee zero overlap.
+                                        val smallGap = targetGap.coerceAtMost(fullSweep * 0.3f)
+                                        startAngle = startAngles[index] + (smallGap / 2f)
+                                        sweepAngle = ((fullSweep - smallGap) * animProgress.value).coerceAtLeast(0.5f)
+                                        cap = StrokeCap.Butt
+                                    }
 
                                     drawArc(
                                         color = sliceColor.copy(alpha = sliceAlphas[index].value),
@@ -285,7 +305,7 @@ fun BreakdownTab(
                                         size = arcSize,
                                         style = Stroke(
                                             width = strokeWidthPx,
-                                            cap = if (categorySpendings.size > 1) StrokeCap.Round else StrokeCap.Butt
+                                            cap = cap
                                         )
                                     )
                                 }
@@ -556,15 +576,26 @@ fun BreakdownTab(
                             }
                         }
 
-                        Text(
-                            text = CurrencyUtils.formatAmountStyled(
-                                expense.amount,
-                                expense.currency,
-                                symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            style = AmountStyle,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = CurrencyUtils.formatAmountStyled(
+                                    expense.amount,
+                                    expense.currency,
+                                    symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                style = AmountStyle,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (expense.currency.isNotBlank() && expense.currency != currentCurrency) {
+                                val rate = rates[expense.currency to currentCurrency] ?: 1.0
+                                val converted = expense.amount * rate
+                                Text(
+                                    text = "≈ " + CurrencyUtils.formatAmount(converted, currentCurrency),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }

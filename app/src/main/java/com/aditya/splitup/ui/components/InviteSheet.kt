@@ -48,8 +48,11 @@ fun InviteSheet(
     val haptic = LocalHapticFeedback.current
     var copied by remember { mutableStateOf(false) }
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         dragHandle = { BottomSheetDefaults.DragHandle() },
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -58,45 +61,45 @@ fun InviteSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp),
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Expressive Icon Avatar
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(56.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Outlined.GroupAdd,
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
 
             Text(
                 text = "Invite to Group",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
 
             Text(
-                text = "Share this invite code with a friend so they can join and sync expenses live.",
+                text = "Share this code with a friend to sync expenses live in real-time.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
+                modifier = Modifier.padding(horizontal = 8.dp)
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
             AnimatedContent(
                 targetState = Triple(inviteCode, isGenerating, errorMessage),
@@ -112,7 +115,7 @@ fun InviteSheet(
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(170.dp)
+                            .height(140.dp)
                     ) {
                         Column(
                             modifier = Modifier.fillMaxSize(),
@@ -120,11 +123,11 @@ fun InviteSheet(
                             verticalArrangement = Arrangement.Center
                         ) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(32.dp),
                                 color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 3.dp
                             )
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(12.dp))
                             Text(
                                 text = "Generating invite code…",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -137,11 +140,11 @@ fun InviteSheet(
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         // Hero Code Display Card
                         ElevatedCard(
-                            shape = RoundedCornerShape(28.dp),
+                            shape = RoundedCornerShape(24.dp),
                             colors = CardDefaults.elevatedCardColors(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                             ),
@@ -151,7 +154,7 @@ fun InviteSheet(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 24.dp, horizontal = 16.dp),
+                                    .padding(vertical = 16.dp, horizontal = 16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -161,7 +164,7 @@ fun InviteSheet(
                                     color = MaterialTheme.colorScheme.primary,
                                     letterSpacing = 2.sp
                                 )
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(6.dp))
                                 Text(
                                     text = code,
                                     style = MaterialTheme.typography.displayMedium.copy(
@@ -171,21 +174,21 @@ fun InviteSheet(
                                     ),
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
-                                Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(10.dp),
                                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Icon(
                                             Icons.Outlined.Timer,
                                             contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
+                                            modifier = Modifier.size(13.dp),
                                             tint = MaterialTheme.colorScheme.outline
                                         )
                                         Text(

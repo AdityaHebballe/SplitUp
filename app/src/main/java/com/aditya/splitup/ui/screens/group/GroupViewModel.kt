@@ -173,8 +173,22 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
         }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val topExpenses: StateFlow<List<Expense>> = expenses.map { list ->
-        list.sortedByDescending { it.amount }
+    val rates: StateFlow<Map<Pair<String, String>, Double>> = ratesCache.asStateFlow()
+
+    val topExpenses: StateFlow<List<Expense>> = combine(
+        expenses,
+        group,
+        ratesCache
+    ) { exps, grp, rates ->
+        if (grp == null || exps.isEmpty()) {
+            emptyList()
+        } else {
+            val groupCurrency = grp.defaultCurrency
+            exps.sortedByDescending { exp ->
+                val rate = if (exp.currency == groupCurrency) 1.0 else (rates[exp.currency to groupCurrency] ?: 1.0)
+                exp.amount * rate
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun deleteExpense(expense: Expense) {
