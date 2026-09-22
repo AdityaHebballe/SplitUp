@@ -72,18 +72,32 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _state.value = JoinState.Loading
             try {
-                // 1. Check if this group already exists locally
+                // 1. Fetch group details from Firestore (for correct currency, name, owner)
+                val groupDoc = syncRepo.firestore.getGroup(invite.groupFirestoreId)
+                val groupName = (groupDoc?.get("name") as? String) ?: invite.groupName
+                val defaultCurrency = (groupDoc?.get("defaultCurrency") as? String) ?: "USD"
+                val ownerUid = groupDoc?.get("ownerUid") as? String
+
+                // 2. Check if this group already exists locally
                 val existingGroup = db.groupDao().getGroupByFirestoreId(invite.groupFirestoreId)
                 val localGroupId: Long
 
                 if (existingGroup != null) {
                     localGroupId = existingGroup.id
+                    db.groupDao().updateGroup(
+                        existingGroup.copy(
+                            name = groupName,
+                            defaultCurrency = defaultCurrency,
+                            ownerUid = ownerUid
+                        )
+                    )
                 } else {
-                    // 2. Create a local group entry
+                    // Create a local group entry with Firestore currency and ownerUid
                     val newGroup = SplitGroup(
                         firestoreId = invite.groupFirestoreId,
-                        name = invite.groupName,
-                        ownerUid = null  // we're not the owner
+                        name = groupName,
+                        defaultCurrency = defaultCurrency,
+                        ownerUid = ownerUid
                     )
                     localGroupId = db.groupDao().insertGroup(newGroup)
                 }
@@ -91,17 +105,14 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                 // 3. Add user's UID to Firestore group memberUids
                 syncRepo.firestore.addUserToGroup(invite.groupFirestoreId, uid)
 
-                // 4. Add new member in Firestore (new slot, linked to this UID)
+                // 4. Add new member in Firestore (linked to this UID)
                 val fsMemberId = syncRepo.firestore.addMember(
                     invite.groupFirestoreId,
                     Member(groupId = localGroupId, name = memberName),
                     linkedUid = uid
                 )
 
-                // 5. Start sync — this will pull all existing members, expenses, payments into Room
-                syncRepo.startSync(invite.groupFirestoreId, localGroupId)
-
-                // 6. Insert the new member locally too
+                // 5. Insert the new member locally
                 db.memberDao().insertMember(
                     Member(
                         groupId = localGroupId,
@@ -110,6 +121,35 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                         linkedUid = uid
                     )
                 )
+
+                // 6. Pre-populate all remote members into Room DB before starting sync
+                // to eliminate the race condition where expenses arrive before members exist
+                try {
+                    val remoteMembers = syncRepo.firestore.getGroupMembers(invite.groupFirestoreId)
+                    for (doc in remoteMembers) {
+                        val fsId = doc["_fsId"] as? String ?: continue
+                        val name = doc["name"] as? String ?: continue
+                        val ratio = (doc["defaultRatioPart"] as? Long)?.toInt() ?: 1
+                        val linkedUid = doc["linkedUid"] as? String
+                        val existingMem = db.memberDao().getMemberByFirestoreId(fsId)
+                        if (existingMem == null) {
+                            db.memberDao().insertMember(
+                                Member(
+                                    groupId = localGroupId,
+                                    firestoreId = fsId,
+                                    name = name,
+                                    defaultRatioPart = ratio,
+                                    linkedUid = linkedUid
+                                )
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("JoinGroupVM", "Error pre-populating remote members", e)
+                }
+
+                // 7. Start sync — members are already in Room DB, so all expenses/splits reconcile cleanly
+                syncRepo.startSync(invite.groupFirestoreId, localGroupId)
 
                 _state.value = JoinState.Success
                 onSuccess(localGroupId)

@@ -51,6 +51,7 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
             group.filterNotNull().first().let { g ->
                 if (g.firestoreId != null) {
                     syncRepo.startSync(g.firestoreId!!, g.id)
+                    syncRepo.syncLocalUnsyncedData(g.id)
                 }
             }
         }

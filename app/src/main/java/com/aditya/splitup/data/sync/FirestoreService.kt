@@ -43,10 +43,19 @@ class FirestoreService {
         db.collection("groups").document(fsId).update(
             mapOf(
                 "name" to group.name,
-                "defaultCurrency" to group.defaultCurrency,
-                "defaultPayerMemberId" to group.defaultPayerMemberId
+                "defaultCurrency" to group.defaultCurrency
             )
         ).await()
+    }
+
+    suspend fun getGroup(firestoreGroupId: String): Map<String, Any?>? {
+        val snap = db.collection("groups").document(firestoreGroupId).get().await()
+        return if (snap.exists()) snap.data?.plus("_fsId" to snap.id) else null
+    }
+
+    suspend fun getMember(firestoreGroupId: String, memberFsId: String): Map<String, Any?>? {
+        val snap = db.collection("groups/$firestoreGroupId/members").document(memberFsId).get().await()
+        return if (snap.exists()) snap.data?.plus("_fsId" to snap.id) else null
     }
 
     suspend fun getGroupName(firestoreGroupId: String): String? {
@@ -121,6 +130,31 @@ class FirestoreService {
         return expRef.id
     }
 
+    suspend fun updateExpense(
+        groupId: String,
+        expense: Expense,
+        splits: List<ExpenseSplit>,
+        memberFsIdMap: Map<Long, String>
+    ) {
+        val fsId = expense.firestoreId ?: return
+        val splitPayload = splits.map { split ->
+            hashMapOf(
+                "memberFsId" to (memberFsIdMap[split.memberId] ?: ""),
+                "ratioPart" to split.ratioPart
+            )
+        }
+        db.collection("groups/$groupId/expenses").document(fsId).update(
+            mapOf(
+                "paidByMemberFsId" to (memberFsIdMap[expense.paidByMemberId] ?: ""),
+                "amount" to expense.amount,
+                "currency" to expense.currency,
+                "category" to expense.category,
+                "description" to expense.description,
+                "splits" to splitPayload
+            )
+        ).await()
+    }
+
     suspend fun deleteExpense(groupId: String, expenseFirestoreId: String) {
         db.collection("groups/$groupId/expenses").document(expenseFirestoreId).delete().await()
     }
@@ -147,6 +181,15 @@ class FirestoreService {
     }
 
     // ─── Listeners ────────────────────────────────────────────────────────────
+
+    fun observeGroup(groupId: String, onUpdate: (Map<String, Any?>) -> Unit): ListenerRegistration {
+        return db.collection("groups").document(groupId)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null || !snap.exists()) return@addSnapshotListener
+                val data = snap.data?.plus("_fsId" to snap.id) ?: mapOf("_fsId" to snap.id)
+                onUpdate(data)
+            }
+    }
 
     fun observeMembers(groupId: String, onUpdate: (List<Map<String, Any?>>) -> Unit): ListenerRegistration {
         return db.collection("groups/$groupId/members")

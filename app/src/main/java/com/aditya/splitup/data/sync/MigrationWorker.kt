@@ -25,7 +25,12 @@ class MigrationWorker(
         val localGroups = db.groupDao().getAllGroupsOnce()
         for (group in localGroups) {
             if (group.firestoreId != null) {
-                // Already synced — listeners are attached when group is viewed
+                // Already synced — push any stranded local expenses/payments/members
+                try {
+                    syncRepo.syncLocalUnsyncedData(group.id)
+                } catch (e: Exception) {
+                    Log.e("MigrationWorker", "Failed to sync local data for group ${group.id}", e)
+                }
                 continue
             }
 

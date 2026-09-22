@@ -21,6 +21,9 @@ interface GroupDao {
     @Query("SELECT * FROM groups WHERE id = :groupId")
     fun getGroupById(groupId: Long): Flow<SplitGroup?>
 
+    @Query("SELECT * FROM groups WHERE id = :groupId LIMIT 1")
+    suspend fun getGroupByIdOnce(groupId: Long): SplitGroup?
+
     @Query("SELECT * FROM groups WHERE firestoreId = :firestoreId LIMIT 1")
     suspend fun getGroupByFirestoreId(firestoreId: String): SplitGroup?
 

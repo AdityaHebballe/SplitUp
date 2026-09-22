@@ -52,21 +52,45 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
     fun updateGroupName(name: String) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
-            repository.updateGroup(currentGroup.copy(name = name))
+            val updated = currentGroup.copy(name = name)
+            repository.updateGroup(updated)
+            if (updated.firestoreId != null) {
+                try {
+                    syncRepo.firestore.updateGroup(updated)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to update group name in Firestore", e)
+                }
+            }
         }
     }
 
     fun updateDefaultCurrency(currency: String) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
-            repository.updateGroup(currentGroup.copy(defaultCurrency = currency))
+            val updated = currentGroup.copy(defaultCurrency = currency)
+            repository.updateGroup(updated)
+            if (updated.firestoreId != null) {
+                try {
+                    syncRepo.firestore.updateGroup(updated)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to update default currency in Firestore", e)
+                }
+            }
         }
     }
 
     fun updateDefaultPayer(memberId: Long) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
-            repository.updateGroup(currentGroup.copy(defaultPayerMemberId = memberId))
+            val updated = currentGroup.copy(defaultPayerMemberId = memberId)
+            repository.updateGroup(updated)
+            if (updated.firestoreId != null) {
+                try {
+                    syncRepo.firestore.updateGroup(updated)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to update default payer in Firestore", e)
+                }
+            }
         }
     }
 
@@ -74,20 +98,54 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
         val currentGroup = _group.value ?: return
         if (name.isBlank()) return
         viewModelScope.launch {
-            repository.insertMember(Member(groupId = currentGroup.id, name = name))
+            var fsId: String? = null
+            if (currentGroup.firestoreId != null) {
+                try {
+                    fsId = syncRepo.firestore.addMember(
+                        currentGroup.firestoreId!!,
+                        Member(groupId = currentGroup.id, name = name)
+                    )
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to add member to Firestore", e)
+                }
+            }
+            repository.insertMember(
+                Member(
+                    groupId = currentGroup.id,
+                    firestoreId = fsId,
+                    name = name
+                )
+            )
         }
     }
 
     fun removeMember(member: Member) {
+        val currentGroup = _group.value ?: return
         viewModelScope.launch {
+            if (currentGroup.firestoreId != null && member.firestoreId != null) {
+                try {
+                    syncRepo.firestore.deleteMember(currentGroup.firestoreId!!, member.firestoreId!!)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to delete member from Firestore", e)
+                }
+            }
             repository.deleteMember(member)
         }
     }
 
     fun updateMemberRatio(member: Member, ratio: Int) {
+        val currentGroup = _group.value ?: return
         if (ratio <= 0) return
         viewModelScope.launch {
-            repository.updateMember(member.copy(defaultRatioPart = ratio))
+            val updated = member.copy(defaultRatioPart = ratio)
+            repository.updateMember(updated)
+            if (currentGroup.firestoreId != null && updated.firestoreId != null) {
+                try {
+                    syncRepo.firestore.updateMember(currentGroup.firestoreId!!, updated)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to update member ratio in Firestore", e)
+                }
+            }
         }
     }
 
@@ -105,18 +163,11 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
                     val updatedGroup = currentGroup.copy(firestoreId = firestoreId, ownerUid = uid)
                     repository.updateGroup(updatedGroup)
                     _group.value = updatedGroup
-
-                    // Also upload any members missing firestoreId
-                    val members = db.memberDao().getMembersByGroupOnce(currentGroup.id)
-                    for (m in members) {
-                        if (m.firestoreId == null) {
-                            val fsMemId = syncRepo.firestore.addMember(firestoreId, m, m.linkedUid)
-                            val updatedMember = m.copy(firestoreId = fsMemId)
-                            db.memberDao().updateMember(updatedMember)
-                        }
-                    }
-                    syncRepo.startSync(firestoreId, currentGroup.id)
                 }
+
+                // Ensure all members, expenses, payments, and settings are synced!
+                syncRepo.syncLocalUnsyncedData(currentGroup.id)
+                syncRepo.startSync(firestoreId, currentGroup.id)
 
                 val code = inviteRepo.createInvite(firestoreId, currentGroup.name)
                 _inviteCode.value = code
