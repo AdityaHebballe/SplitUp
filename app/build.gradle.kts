@@ -33,6 +33,10 @@ android {
     buildFeatures { compose = true }
 }
 
+base {
+    archivesName.set("SplitUp-v1.0")
+}
+
 dependencies {
     // Core
     implementation(libs.androidx.core.ktx)
