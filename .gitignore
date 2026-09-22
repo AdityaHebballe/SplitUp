@@ -11,4 +11,6 @@ app/build/
 .externalNativeBuild/
 .cxx/
 .codegraph/
+google-services.json
+app/google-services.json
 
