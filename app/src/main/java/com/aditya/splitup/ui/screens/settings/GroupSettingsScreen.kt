@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -312,6 +313,8 @@ fun GroupSettingsScreen(
             }
 
             item {
+                val isOwner = viewModel.isOwner
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = { showDeleteDialog = true },
@@ -321,26 +324,37 @@ fun GroupSettingsScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                    Icon(
+                        imageVector = if (isOwner) Icons.Outlined.DeleteOutline else Icons.AutoMirrored.Outlined.ExitToApp,
+                        contentDescription = null
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete Group", fontWeight = FontWeight.Bold)
+                    Text(if (isOwner) "Delete Group" else "Leave Group", fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 
     if (showDeleteDialog) {
+        val isOwner = viewModel.isOwner
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             icon = {
                 Icon(
-                    imageVector = Icons.Outlined.DeleteOutline,
+                    imageVector = if (isOwner) Icons.Outlined.DeleteOutline else Icons.AutoMirrored.Outlined.ExitToApp,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Delete Group") },
-            text = { Text("Are you sure you want to delete this group? This action cannot be undone.") },
+            title = { Text(if (isOwner) "Delete Group" else "Leave Group") },
+            text = {
+                Text(
+                    if (isOwner)
+                        "Are you sure you want to delete this group? This will permanently delete the group, expenses, payments, and active invites for all members. This action cannot be undone."
+                    else
+                        "Are you sure you want to leave this group? The group will be removed from your device, but remains available for other members."
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
@@ -352,7 +366,7 @@ fun GroupSettingsScreen(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Delete", fontWeight = FontWeight.Bold)
+                    Text(if (isOwner) "Delete" else "Leave", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

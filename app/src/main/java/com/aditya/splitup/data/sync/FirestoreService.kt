@@ -100,6 +100,12 @@ class FirestoreService {
         memberFsIdMap: Map<Long, String>  // localMemberId → firestoreId
     ): String {
         val uid = currentUid
+        val splitPayload = splits.map { split ->
+            hashMapOf(
+                "memberFsId" to (memberFsIdMap[split.memberId] ?: ""),
+                "ratioPart" to split.ratioPart
+            )
+        }
         val expRef = db.collection("groups/$groupId/expenses").add(
             hashMapOf(
                 "paidByMemberFsId" to (memberFsIdMap[expense.paidByMemberId] ?: ""),
@@ -108,21 +114,10 @@ class FirestoreService {
                 "category" to expense.category,
                 "description" to expense.description,
                 "addedByUid" to uid,
-                "createdAt" to expense.createdAt
+                "createdAt" to expense.createdAt,
+                "splits" to splitPayload
             )
         ).await()
-
-        val batch = db.batch()
-        for (split in splits) {
-            val splitRef = db.collection("groups/$groupId/expenses/${expRef.id}/splits").document()
-            batch.set(
-                splitRef, hashMapOf(
-                    "memberFsId" to (memberFsIdMap[split.memberId] ?: ""),
-                    "ratioPart" to split.ratioPart
-                )
-            )
-        }
-        batch.commit().await()
         return expRef.id
     }
 
@@ -186,11 +181,46 @@ class FirestoreService {
             }
     }
 
-    suspend fun getExpenseSplits(groupId: String, expenseFirestoreId: String): List<Map<String, Any?>> {
-        return db.collection("groups/$groupId/expenses/$expenseFirestoreId/splits")
-            .get().await().documents.map { doc ->
-                doc.data?.plus("_fsId" to doc.id) ?: mapOf("_fsId" to doc.id)
-            }
+    // ─── Group Cleanup & Deletion ─────────────────────────────────────────────
+
+    suspend fun deleteGroupCascading(firestoreGroupId: String) {
+        val members = db.collection("groups/$firestoreGroupId/members").get().await()
+        val expenses = db.collection("groups/$firestoreGroupId/expenses").get().await()
+        val payments = db.collection("groups/$firestoreGroupId/payments").get().await()
+        val invites = db.collection("invites").whereEqualTo("groupId", firestoreGroupId).get().await()
+
+        val docsToDelete = mutableListOf<com.google.firebase.firestore.DocumentReference>()
+        members.documents.forEach { docsToDelete.add(it.reference) }
+        expenses.documents.forEach { docsToDelete.add(it.reference) }
+        payments.documents.forEach { docsToDelete.add(it.reference) }
+        invites.documents.forEach { docsToDelete.add(it.reference) }
+        docsToDelete.add(db.collection("groups").document(firestoreGroupId))
+
+        docsToDelete.chunked(450).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { ref -> batch.delete(ref) }
+            batch.commit().await()
+        }
+    }
+
+    suspend fun leaveGroup(firestoreGroupId: String, uid: String) {
+        db.collection("groups").document(firestoreGroupId)
+            .update("memberUids", FieldValue.arrayRemove(uid)).await()
+
+        val memberDocs = db.collection("groups/$firestoreGroupId/members")
+            .whereEqualTo("linkedUid", uid).get().await()
+        for (doc in memberDocs.documents) {
+            doc.reference.update("linkedUid", null).await()
+        }
+    }
+
+    suspend fun cleanupGroupInvites(firestoreGroupId: String) {
+        val invites = db.collection("invites").whereEqualTo("groupId", firestoreGroupId).get().await()
+        if (!invites.isEmpty) {
+            val batch = db.batch()
+            invites.documents.forEach { batch.delete(it.reference) }
+            batch.commit().await()
+        }
     }
 
     // ─── Full group fetch (for join preview) ──────────────────────────────────

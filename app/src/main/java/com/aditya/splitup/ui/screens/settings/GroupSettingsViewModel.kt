@@ -134,10 +134,17 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
         _inviteErrorMessage.value = null
     }
 
+    val isOwner: Boolean
+        get() {
+            val currentGroup = _group.value ?: return true
+            val uid = syncRepo.firestore.currentUid ?: return true
+            return currentGroup.ownerUid == null || currentGroup.ownerUid == uid
+        }
+
     fun deleteGroup(onSuccess: () -> Unit) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
-            repository.deleteGroup(currentGroup)
+            syncRepo.deleteGroup(currentGroup, isOwner = isOwner)
             onSuccess()
         }
     }

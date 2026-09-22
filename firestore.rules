@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Groups: Members can read, any authenticated user can create, owner can delete
+    match /groups/{groupId} {
+      allow read: if request.auth != null && (
+        resource == null ||
+        request.auth.uid in resource.data.memberUids ||
+        resource.data.ownerUid == request.auth.uid
+      );
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        request.auth.uid in resource.data.memberUids ||
+        resource.data.ownerUid == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids'])
+      );
+      allow delete: if request.auth != null && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.ownerUid == null
+      );
+
+      // Members Subcollection
+      match /members/{memberId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Expenses Subcollection (Splits embedded directly in document)
+      match /expenses/{expenseId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Payments Subcollection
+      match /payments/{paymentId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Invites: 6-char alphanumeric codes with TTL Timestamp
+    match /invites/{code} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+  }
+}

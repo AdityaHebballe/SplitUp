@@ -25,8 +25,7 @@ class MigrationWorker(
         val localGroups = db.groupDao().getAllGroupsOnce()
         for (group in localGroups) {
             if (group.firestoreId != null) {
-                // Already synced — just make sure listeners are running
-                syncRepo.startSync(group.firestoreId!!, group.id)
+                // Already synced — listeners are attached when group is viewed
                 continue
             }
 

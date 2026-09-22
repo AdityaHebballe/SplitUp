@@ -118,6 +118,26 @@ class SyncRepository(
         db.expenseDao().deleteExpense(expense)
     }
 
+    suspend fun deleteGroup(group: SplitGroup, isOwner: Boolean) {
+        val fsId = group.firestoreId
+        if (fsId != null) {
+            stopSync(fsId)
+            try {
+                if (isOwner) {
+                    firestore.deleteGroupCascading(fsId)
+                } else {
+                    val uid = firestore.currentUid
+                    if (uid != null) {
+                        firestore.leaveGroup(fsId, uid)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SyncRepository", "Failed to delete/leave group in Firestore", e)
+            }
+        }
+        db.groupDao().deleteGroup(group)
+    }
+
     suspend fun recordPayment(group: SplitGroup, payment: Payment) {
         // 1. Insert into local Room DB immediately
         val localPaymentId = db.paymentDao().insertPayment(payment)
@@ -273,9 +293,7 @@ class SyncRepository(
                 localByFsId[fsId] = updated
             } else {
                 // Remote expense created on another device
-                val splitDocs = try {
-                    firestore.getExpenseSplits(firestoreGroupId, fsId)
-                } catch (e: Exception) { emptyList() }
+                val splitPayload = (doc["splits"] as? List<*>)?.filterIsInstance<Map<String, Any?>>() ?: emptyList()
 
                 val expenseId = db.expenseDao().insertExpense(
                     Expense(
@@ -290,14 +308,15 @@ class SyncRepository(
                         createdAt = createdAt
                     )
                 )
-                val splits = splitDocs.mapNotNull { splitDoc ->
-                    val mFsId = splitDoc["memberFsId"] as? String ?: return@mapNotNull null
+                val splits = splitPayload.mapNotNull { splitMap ->
+                    val mFsId = splitMap["memberFsId"] as? String ?: return@mapNotNull null
                     val member = memberByFsId[mFsId] ?: return@mapNotNull null
                     ExpenseSplit(
-                        firestoreId = splitDoc["_fsId"] as? String,
                         expenseId = expenseId,
                         memberId = member.id,
-                        ratioPart = (splitDoc["ratioPart"] as? Long)?.toInt() ?: 1
+                        ratioPart = (splitMap["ratioPart"] as? Long)?.toInt()
+                            ?: (splitMap["ratioPart"] as? Int)
+                            ?: 1
                     )
                 }
                 if (splits.isNotEmpty()) db.expenseDao().insertSplits(splits)
