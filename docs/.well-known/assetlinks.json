@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aditya.splitup",
+      "sha256_cert_fingerprints": [
+        "C5:E5:D7:59:5A:A6:6B:A5:12:1E:BB:29:82:5E:53:3C:16:DA:DE:EE:9C:C5:E9:C2:40:9B:D9:66:48:F2:55:51"
+      ]
+    }
+  }
+]

@@ -203,14 +203,15 @@ fun InviteSheet(
                             }
                         }
 
-                        val inviteLink = "https://splitup.app/join/$code"
+                        val webLink = "https://splitup-e3d86.web.app/join/$code"
+                        val appLink = "splitup://join/$code"
 
                         // Share Button (Primary Action)
                         val shareInteractionSource = rememberPressInteractionSource()
                         Button(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                val shareText = "Join my SplitUp group!\n\nTap to join directly:\n$inviteLink\n\nOr enter code in SplitUp: $code"
+                                val shareText = "Join my SplitUp group!\n\nTap to join directly:\n$appLink\n$webLink\n\nOr enter code in SplitUp: $code"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -246,7 +247,7 @@ fun InviteSheet(
                             FilledTonalButton(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    clipboardManager.setText(AnnotatedString(inviteLink))
+                                    clipboardManager.setText(AnnotatedString(webLink))
                                     copiedLink = true
                                     copiedCode = false
                                 },

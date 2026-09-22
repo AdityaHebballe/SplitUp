@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join Group — SplitUp</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background: #121316; color: #E2E2E6; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .card { background: #1E1F24; border: 1px solid #2F3036; border-radius: 28px; padding: 36px 28px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 12px 36px rgba(0,0,0,0.5); }
+    .logo { width: 72px; height: 72px; background: #6750A4; border-radius: 22px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 36px; }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #FFFFFF; }
+    p { color: #C4C6D0; font-size: 15px; margin-bottom: 24px; line-height: 1.5; }
+    .code-box { background: #2B2B30; border: 2px dashed #6750A4; border-radius: 16px; padding: 14px; margin-bottom: 24px; font-size: 26px; font-weight: 800; letter-spacing: 6px; color: #D0BCFF; font-family: monospace; }
+    .btn { display: block; width: 100%; padding: 16px; border-radius: 18px; font-size: 16px; font-weight: 600; text-decoration: none; margin-bottom: 12px; transition: transform 0.1s, opacity 0.2s; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: #D0BCFF; color: #381E72; }
+    .btn-secondary { background: #2B2B30; color: #E2E2E6; border: 1px solid #44474F; }
+    .hint { font-size: 13px; color: #8E9099; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">💸</div>
+    <h1>Join SplitUp Group</h1>
+    <p>You've been invited to join a group on SplitUp.</p>
+    
+    <div id="codeBox" class="code-box">------</div>
+    
+    <a id="openAppBtn" href="#" class="btn btn-primary">Open in SplitUp App</a>
+    <a href="https://github.com/AdityaHebballe/SplitUp/releases/tag/v1.0" class="btn btn-secondary">Download SplitUp APK</a>
+    
+    <div class="hint">If the app doesn't open automatically, tap "Open in SplitUp App" or enter the code manually in SplitUp.</div>
+  </div>
+
+  <script>
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code') || (pathParts[pathParts.length - 1] !== 'join' ? pathParts[pathParts.length - 1] : '') || '';
+
+    if (code) {
+      const cleanCode = code.toUpperCase().trim();
+      document.getElementById('codeBox').innerText = cleanCode;
+      const appUrl = 'splitup://join/' + cleanCode;
+      document.getElementById('openAppBtn').href = appUrl;
+
+      // Attempt automatic redirect to the app scheme
+      setTimeout(() => {
+        window.location.href = appUrl;
+      }, 300);
+    }
+  </script>
+</body>
+</html>

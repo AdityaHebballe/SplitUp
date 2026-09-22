@@ -38,26 +38,23 @@
                     android:host="join" />
             </intent-filter>
 
-            <!-- HTTPS web deep link: https://splitup.app/join/{code} -->
+            <!-- Firebase Hosting web deep link: https://splitup-e3d86.web.app/join/{code} -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="splitup.app"
+                    android:host="splitup-e3d86.web.app"
                     android:pathPrefix="/join" />
-            </intent-filter>
-
-            <!-- HTTP web deep link: http://splitup.app/join/{code} -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="http"
-                    android:host="splitup.app"
+                    android:scheme="https"
+                    android:host="splitup-e3d86.firebaseapp.com"
                     android:pathPrefix="/join" />
+                <data
+                    android:scheme="https"
+                    android:host="adityahebballe.github.io"
+                    android:pathPrefix="/SplitUp/join" />
             </intent-filter>
         </activity>
     </application>

@@ -134,15 +134,16 @@ fun SplitTrackerNavGraph(navController: NavHostController = rememberNavControlle
 
         composable<JoinGroupRoute>(
             deepLinks = listOf(
-                navDeepLink { uriPattern = "https://splitup.app/join/{code}" },
-                navDeepLink { uriPattern = "https://splitup.app/join?code={code}" },
-                navDeepLink { uriPattern = "https://splitup.app/join" },
-                navDeepLink { uriPattern = "http://splitup.app/join/{code}" },
-                navDeepLink { uriPattern = "http://splitup.app/join?code={code}" },
-                navDeepLink { uriPattern = "http://splitup.app/join" },
                 navDeepLink { uriPattern = "splitup://join/{code}" },
                 navDeepLink { uriPattern = "splitup://join?code={code}" },
-                navDeepLink { uriPattern = "splitup://join" }
+                navDeepLink { uriPattern = "splitup://join" },
+                navDeepLink { uriPattern = "https://splitup-e3d86.web.app/join/{code}" },
+                navDeepLink { uriPattern = "https://splitup-e3d86.web.app/join?code={code}" },
+                navDeepLink { uriPattern = "https://splitup-e3d86.web.app/join" },
+                navDeepLink { uriPattern = "https://splitup-e3d86.firebaseapp.com/join/{code}" },
+                navDeepLink { uriPattern = "https://splitup-e3d86.firebaseapp.com/join?code={code}" },
+                navDeepLink { uriPattern = "https://adityahebballe.github.io/SplitUp/join/{code}" },
+                navDeepLink { uriPattern = "https://adityahebballe.github.io/SplitUp/join?code={code}" }
             )
         ) { backStackEntry ->
             val route = backStackEntry.toRoute<JoinGroupRoute>()
