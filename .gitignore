@@ -13,4 +13,6 @@ app/build/
 .codegraph/
 google-services.json
 app/google-services.json
+*.apk
+.firebase/
 
