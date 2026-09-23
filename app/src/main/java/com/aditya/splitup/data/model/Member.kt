@@ -23,5 +23,6 @@ data class Member(
     val groupId: Long,
     val name: String,
     val defaultRatioPart: Int = 1,
-    val linkedUid: String? = null
+    val linkedUid: String? = null,
+    val isRemoved: Boolean = false
 )

@@ -49,6 +49,7 @@ fun GroupSettingsScreen(
 ) {
     val group by viewModel.group.collectAsStateWithLifecycle()
     val members by viewModel.members.collectAsStateWithLifecycle()
+    val formerMembers by viewModel.formerMembers.collectAsStateWithLifecycle()
     val inviteCode by viewModel.inviteCode.collectAsStateWithLifecycle()
     val isGeneratingInvite by viewModel.isGeneratingInvite.collectAsStateWithLifecycle()
     val inviteErrorMessage by viewModel.inviteErrorMessage.collectAsStateWithLifecycle()
@@ -273,6 +274,77 @@ fun GroupSettingsScreen(
                                     imageVector = if (isSelf) Icons.AutoMirrored.Outlined.ExitToApp else Icons.Outlined.DeleteOutline,
                                     contentDescription = if (isSelf) "Leave Group" else "Remove"
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (formerMembers.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Former Members",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                items(formerMembers) { former ->
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = former.name.take(1).uppercase(),
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Column {
+                                    Text(
+                                        former.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Past expenses preserved",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.restoreMember(former)
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Re-add")
                             }
                         }
                     }

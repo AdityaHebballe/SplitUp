@@ -36,7 +36,7 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
         }
         viewModelScope.launch {
             memberDao.getMembersByGroup(groupId).collect {
-                _members.value = it
+                _members.value = it.filter { !it.isRemoved }
             }
         }
     }

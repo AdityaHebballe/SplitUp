@@ -28,6 +28,9 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
     private val _members = MutableStateFlow<List<Member>>(emptyList())
     val members: StateFlow<List<Member>> = _members.asStateFlow()
 
+    private val _formerMembers = MutableStateFlow<List<Member>>(emptyList())
+    val formerMembers: StateFlow<List<Member>> = _formerMembers.asStateFlow()
+
     private val _inviteCode = MutableStateFlow<String?>(null)
     val inviteCode: StateFlow<String?> = _inviteCode.asStateFlow()
 
@@ -49,8 +52,9 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
             }
         }
         viewModelScope.launch {
-            repository.getMembersByGroup(groupId).collect { 
-                _members.value = it 
+            repository.getMembersByGroup(groupId).collect { list ->
+                _members.value = list.filter { !it.isRemoved }
+                _formerMembers.value = list.filter { it.isRemoved }
             }
         }
     }
@@ -106,12 +110,21 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
         if (trimmed.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
             val existingLocal = db.memberDao().getMembersByGroupOnce(currentGroup.id)
-            if (existingLocal.any { it.name.trim().equals(trimmed, ignoreCase = true) }) {
-                Log.d("GroupSettingsVM", "Member with name $trimmed already exists")
+            // 1. If an active member with this name already exists, do nothing
+            val activeExisting = existingLocal.firstOrNull { !it.isRemoved && it.name.trim().equals(trimmed, ignoreCase = true) }
+            if (activeExisting != null) {
+                Log.d("GroupSettingsVM", "Active member with name $trimmed already exists")
                 return@launch
             }
 
-            // Insert locally first so UI updates immediately and member has a primary key
+            // 2. If a former member with this name exists, restore them!
+            val formerExisting = existingLocal.firstOrNull { it.isRemoved && it.name.trim().equals(trimmed, ignoreCase = true) }
+            if (formerExisting != null) {
+                restoreMember(formerExisting)
+                return@launch
+            }
+
+            // 3. Insert locally first so UI updates immediately and member has a primary key
             val newMember = Member(
                 groupId = currentGroup.id,
                 name = trimmed
@@ -124,11 +137,24 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
                         currentGroup.firestoreId,
                         newMember.copy(id = localId)
                     )
-                    // Update local member with firestoreId.
-                    // If snapshot listener fires before this, reconcileMembers matches by name and sets firestoreId without duplicate insertion.
                     repository.updateMember(newMember.copy(id = localId, firestoreId = fsId))
                 } catch (e: Exception) {
                     Log.e("GroupSettingsVM", "Failed to add member to Firestore", e)
+                }
+            }
+        }
+    }
+
+    fun restoreMember(member: Member) {
+        val currentGroup = _group.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val restored = member.copy(isRemoved = false)
+            repository.updateMember(restored)
+            if (currentGroup.firestoreId != null && restored.firestoreId != null) {
+                try {
+                    syncRepo.firestore.restoreMemberInGroup(currentGroup.firestoreId, restored.firestoreId)
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to restore member in Firestore", e)
                 }
             }
         }
@@ -173,27 +199,30 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
             val hasSplits = db.expenseDao().getSplitsByMemberId(member.id).isNotEmpty()
             val isReferenced = hasExpenses || hasPayments || hasSplits
 
-            if (currentGroup.firestoreId != null && member.firestoreId != null) {
-                try {
-                    if (isReferenced) {
-                        syncRepo.firestore.unlinkMember(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
-                    } else {
-                        syncRepo.firestore.deleteMember(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
-                    }
-                } catch (e: Exception) {
-                    Log.e("GroupSettingsVM", "Failed to remove member in Firestore", e)
-                }
-            }
-
             if (isReferenced) {
-                // Member has financial records; unlink them so their app account is disconnected while preserving historical data
-                repository.updateMember(member.copy(linkedUid = null))
+                // Member has financial records; mark as former member so expenses and splits are preserved!
+                val removed = member.copy(isRemoved = true, linkedUid = null)
+                repository.updateMember(removed)
+                if (currentGroup.firestoreId != null && member.firestoreId != null) {
+                    try {
+                        syncRepo.firestore.removeMemberFromGroup(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
+                    } catch (e: Exception) {
+                        Log.e("GroupSettingsVM", "Failed to remove member in Firestore", e)
+                    }
+                }
             } else {
+                if (currentGroup.firestoreId != null && member.firestoreId != null) {
+                    try {
+                        syncRepo.firestore.deleteMember(currentGroup.firestoreId, member.firestoreId, member.linkedUid)
+                    } catch (e: Exception) {
+                        Log.e("GroupSettingsVM", "Failed to delete member in Firestore", e)
+                    }
+                }
                 try {
                     repository.deleteMember(member)
                 } catch (e: Exception) {
-                    Log.e("GroupSettingsVM", "Failed to delete member, falling back to unlink", e)
-                    repository.updateMember(member.copy(linkedUid = null))
+                    Log.e("GroupSettingsVM", "Failed to delete unreferenced member, unlinking", e)
+                    repository.updateMember(member.copy(isRemoved = true, linkedUid = null))
                 }
             }
         }

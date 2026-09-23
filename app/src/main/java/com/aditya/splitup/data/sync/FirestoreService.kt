@@ -1,5 +1,6 @@
 package com.aditya.splitup.data.sync
 
+import android.util.Log
 import com.aditya.splitup.data.model.Expense
 import com.aditya.splitup.data.model.ExpenseSplit
 import com.aditya.splitup.data.model.Member
@@ -119,14 +120,38 @@ class FirestoreService {
 
     suspend fun unlinkMember(groupId: String, memberFirestoreId: String, linkedUid: String? = null) {
         if (linkedUid != null) {
-            db.collection("groups").document(groupId)
-                .update("memberUids", FieldValue.arrayRemove(linkedUid)).await()
+            try {
+                db.collection("groups").document(groupId)
+                    .update("memberUids", FieldValue.arrayRemove(linkedUid)).await()
+            } catch (_: Exception) {}
         }
         db.collection("groups/$groupId/members").document(memberFirestoreId).update(
             mapOf(
                 "linkedUid" to null,
                 "previousUid" to linkedUid
             )
+        ).await()
+    }
+
+    suspend fun removeMemberFromGroup(groupId: String, memberFirestoreId: String, linkedUid: String? = null) {
+        if (linkedUid != null) {
+            try {
+                db.collection("groups").document(groupId)
+                    .update("memberUids", FieldValue.arrayRemove(linkedUid)).await()
+            } catch (_: Exception) {}
+        }
+        db.collection("groups/$groupId/members").document(memberFirestoreId).update(
+            mapOf(
+                "isRemoved" to true,
+                "linkedUid" to null,
+                "previousUid" to linkedUid
+            )
+        ).await()
+    }
+
+    suspend fun restoreMemberInGroup(groupId: String, memberFirestoreId: String) {
+        db.collection("groups/$groupId/members").document(memberFirestoreId).update(
+            mapOf("isRemoved" to false)
         ).await()
     }
 
@@ -138,6 +163,64 @@ class FirestoreService {
             } catch (_: Exception) {}
         }
         db.collection("groups/$groupId/members").document(memberFirestoreId).delete().await()
+    }
+
+    suspend fun mergeDuplicateMemberInFirestore(groupId: String, keepFsId: String, duplicateFsId: String) {
+        if (keepFsId == duplicateFsId) return
+        try {
+            // 1. Reassign expenses paid by duplicate
+            val expensesSnapshot = db.collection("groups/$groupId/expenses").get().await()
+            for (doc in expensesSnapshot.documents) {
+                var needsUpdate = false
+                val updates = mutableMapOf<String, Any>()
+                if (doc.getString("paidByMemberFsId") == duplicateFsId) {
+                    updates["paidByMemberFsId"] = keepFsId
+                    needsUpdate = true
+                }
+                @Suppress("UNCHECKED_CAST")
+                val splits = doc.get("splits") as? List<Map<String, Any>>
+                if (splits != null && splits.any { it["memberFsId"] == duplicateFsId }) {
+                    val newSplits = mutableListOf<Map<String, Any>>()
+                    var keepIncluded = splits.any { it["memberFsId"] == keepFsId }
+                    for (s in splits) {
+                        val mId = s["memberFsId"] as? String
+                        if (mId == duplicateFsId) {
+                            if (!keepIncluded) {
+                                newSplits.add(s + mapOf("memberFsId" to keepFsId))
+                                keepIncluded = true
+                            }
+                        } else {
+                            newSplits.add(s)
+                        }
+                    }
+                    updates["splits"] = newSplits
+                    needsUpdate = true
+                }
+                if (needsUpdate) {
+                    doc.reference.update(updates).await()
+                }
+            }
+
+            // 2. Reassign payments involving duplicate
+            val paymentsSnapshot = db.collection("groups/$groupId/payments").get().await()
+            for (doc in paymentsSnapshot.documents) {
+                val updates = mutableMapOf<String, Any>()
+                if (doc.getString("fromMemberFsId") == duplicateFsId) {
+                    updates["fromMemberFsId"] = keepFsId
+                }
+                if (doc.getString("toMemberFsId") == duplicateFsId) {
+                    updates["toMemberFsId"] = keepFsId
+                }
+                if (updates.isNotEmpty()) {
+                    doc.reference.update(updates).await()
+                }
+            }
+
+            // 3. Delete duplicate member document from Firestore
+            db.collection("groups/$groupId/members").document(duplicateFsId).delete().await()
+        } catch (e: Exception) {
+            Log.e("FirestoreService", "Failed to merge duplicate member $duplicateFsId into $keepFsId in Firestore", e)
+        }
     }
 
     // ─── Expenses ─────────────────────────────────────────────────────────────
