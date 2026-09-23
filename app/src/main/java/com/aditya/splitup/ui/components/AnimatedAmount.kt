@@ -3,11 +3,10 @@ package com.aditya.splitup.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalTextStyle
@@ -22,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -30,13 +30,15 @@ import com.aditya.splitup.domain.CurrencyUtils
 import java.util.Locale
 
 /**
- * An M3 Expressive per-digit odometer ticker for monetary amounts.
+ * An M3 Expressive true mechanical odometer ticker for monetary amounts.
  *
- * Features:
- * 1. Independent per-digit columns: only changing digits slide vertically.
- * 2. Stable decimal point and currency symbol that never shift or flicker.
- * 3. Directional sliding: slides upward when amount increases, downward when it decreases.
- * 4. Tab-switch refresh via [cycle]: smoothly rolls digits into place when switching tabs.
+ * Architecture matching Google Pay / Google Wallet:
+ * 1. Fixed-width Tabular Numerals (tnum): avoids horizontal jitter while digits roll.
+ * 2. Slot Aperture Clipping: digits emerge from and exit into an aperture window (clipToBounds).
+ * 3. Pure mechanical roll: no alpha fading; digits slide vertically like a cylindrical drum.
+ * 4. Stable separators: decimal point and currency symbol are completely stationary.
+ * 5. Directional: rolls upward when increasing, downward when decreasing.
+ * 6. Supports [cycle] for tab-switch entrance roll.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -55,12 +57,14 @@ fun AnimatedAmount(
     val symbol = remember(currencyCode) { CurrencyUtils.getSymbol(currencyCode) }
     val motion = MaterialTheme.motionScheme
 
-    // Computed synchronously during composition (not inside a cancellable LaunchedEffect
-    // coroutine) so two rapid amount changes can't have the first update's direction-write
-    // cancelled before it applies, which used to make a digit occasionally slide the wrong way.
     var prevAmount by remember { mutableDoubleStateOf(amount) }
     val directionUp = amount >= prevAmount
     SideEffect { prevAmount = amount }
+
+    // Use tabular figures (tnum) so all digits have identical character width
+    val tabularStyle = remember(style) {
+        style.copy(fontFeatureSettings = "tnum")
+    }
 
     val formattedString = remember(amount) { String.format(Locale.US, "%.2f", amount) }
     val dotIndex = formattedString.indexOf('.')
@@ -68,7 +72,6 @@ fun AnimatedAmount(
     val fracPart = if (dotIndex >= 0) formattedString.substring(dotIndex + 1) else ""
 
     val spatialSpec = motion.defaultSpatialSpec<IntOffset>()
-    val effectsSpec = motion.defaultEffectsSpec<Float>()
 
     Row(
         modifier = modifier,
@@ -78,7 +81,7 @@ fun AnimatedAmount(
         if (prefix.isNotEmpty()) {
             Text(
                 text = prefix,
-                style = style,
+                style = tabularStyle,
                 color = color,
                 fontWeight = fontWeight
             )
@@ -88,56 +91,54 @@ fun AnimatedAmount(
         if (showStyledSymbol) {
             Text(
                 text = symbol,
-                style = style.copy(fontSize = style.fontSize * 0.65f),
+                style = tabularStyle.copy(fontSize = tabularStyle.fontSize * 0.65f),
                 color = if (symbolColor != Color.Unspecified) symbolColor else color.copy(alpha = 0.7f),
                 fontWeight = FontWeight.Normal
             )
         } else {
             Text(
                 text = symbol,
-                style = style,
+                style = tabularStyle,
                 color = color,
                 fontWeight = fontWeight
             )
         }
 
-        // Integer digits (keyed by power from the decimal point for stability)
+        // Integer digits (keyed by distance from the decimal point for structural stability)
         intPart.forEachIndexed { index, char ->
             val power = intPart.length - 1 - index
             key("int_$power") {
-                AnimatedDigit(
+                AnimatedOdometerDigit(
                     char = char,
                     directionUp = directionUp,
                     cycle = cycle,
                     spatialSpec = spatialSpec,
-                    effectsSpec = effectsSpec,
-                    style = style,
+                    style = tabularStyle,
                     color = color,
                     fontWeight = fontWeight
                 )
             }
         }
 
-        // Static decimal separator (never moves or slides)
+        // Static decimal separator (strictly fixed in place)
         if (dotIndex >= 0) {
             Text(
                 text = ".",
-                style = style,
+                style = tabularStyle,
                 color = color,
                 fontWeight = fontWeight
             )
         }
 
-        // Fractional digits (tenths and hundredths)
+        // Fractional digits (tenths & hundredths)
         fracPart.forEachIndexed { index, char ->
             key("frac_$index") {
-                AnimatedDigit(
+                AnimatedOdometerDigit(
                     char = char,
                     directionUp = directionUp,
                     cycle = cycle,
                     spatialSpec = spatialSpec,
-                    effectsSpec = effectsSpec,
-                    style = style,
+                    style = tabularStyle,
                     color = color,
                     fontWeight = fontWeight
                 )
@@ -146,40 +147,43 @@ fun AnimatedAmount(
     }
 }
 
+/**
+ * A single mechanical odometer digit reel moving through a clipped aperture slot.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun AnimatedDigit(
+private fun AnimatedOdometerDigit(
     char: Char,
     directionUp: Boolean,
-    cycle: Int,
+    cycle: Int = 0,
     spatialSpec: FiniteAnimationSpec<IntOffset>,
-    effectsSpec: FiniteAnimationSpec<Float>,
     style: TextStyle,
     color: Color,
     fontWeight: FontWeight?
 ) {
-    AnimatedContent(
-        targetState = Pair(char, cycle),
-        transitionSpec = {
-            if (directionUp) {
-                (slideInVertically(animationSpec = spatialSpec) { height -> height } +
-                        fadeIn(animationSpec = effectsSpec)) togetherWith
-                        (slideOutVertically(animationSpec = spatialSpec) { height -> -height } +
-                                fadeOut(animationSpec = effectsSpec))
-            } else {
-                (slideInVertically(animationSpec = spatialSpec) { height -> -height } +
-                        fadeIn(animationSpec = effectsSpec)) togetherWith
-                        (slideOutVertically(animationSpec = spatialSpec) { height -> height } +
-                                fadeOut(animationSpec = effectsSpec))
-            }.using(SizeTransform(clip = false))
-        },
-        label = "DigitTicker"
-    ) { (targetChar, _) ->
-        Text(
-            text = targetChar.toString(),
-            style = style,
-            color = color,
-            fontWeight = fontWeight
-        )
+    Box(
+        modifier = Modifier.clipToBounds(),
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedContent(
+            targetState = char to cycle,
+            transitionSpec = {
+                if (directionUp) {
+                    slideInVertically(animationSpec = spatialSpec) { height -> height } togetherWith
+                            slideOutVertically(animationSpec = spatialSpec) { height -> -height }
+                } else {
+                    slideInVertically(animationSpec = spatialSpec) { height -> -height } togetherWith
+                            slideOutVertically(animationSpec = spatialSpec) { height -> height }
+                }.using(SizeTransform(clip = true))
+            },
+            label = "OdometerDigit"
+        ) { (targetChar, _) ->
+            Text(
+                text = targetChar.toString(),
+                style = style,
+                color = color,
+                fontWeight = fontWeight
+            )
+        }
     }
 }

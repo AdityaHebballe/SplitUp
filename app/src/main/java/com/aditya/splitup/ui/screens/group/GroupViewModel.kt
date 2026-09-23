@@ -67,6 +67,10 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
     private val _syncWarnings = Channel<String>(Channel.BUFFERED)
     val syncWarnings: Flow<String> = _syncWarnings.receiveAsFlow()
 
+    // Tracks the totalSpent that the user last saw when visiting BalancesTab.
+    // Retained across tab switches and sheet presentations in ViewModelScope.
+    var lastSeenBalancesTotal: Double? = null
+
     init {
         // Start Firestore sync once we know the group's firestoreId
         viewModelScope.launch {

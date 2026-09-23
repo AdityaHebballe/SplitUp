@@ -53,6 +53,7 @@ fun GroupSettingsScreen(
     val inviteCode by viewModel.inviteCode.collectAsStateWithLifecycle()
     val isGeneratingInvite by viewModel.isGeneratingInvite.collectAsStateWithLifecycle()
     val inviteErrorMessage by viewModel.inviteErrorMessage.collectAsStateWithLifecycle()
+    val isAddingMember by viewModel.isAddingMember.collectAsStateWithLifecycle()
     var newMemberName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showSelfLeaveDialog by remember { mutableStateOf(false) }
@@ -157,26 +158,35 @@ fun GroupSettingsScreen(
                     },
                     trailingIcon = {
                         AnimatedVisibility(
-                            visible = newMemberName.isNotBlank(),
+                            visible = newMemberName.isNotBlank() || isAddingMember,
                             enter = fadeIn() + scaleIn(),
                             exit = fadeOut() + scaleOut()
                         ) {
                             FilledIconButton(
                                 onClick = {
-                                    if (newMemberName.isNotBlank()) {
+                                    if (newMemberName.isNotBlank() && !isAddingMember) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         viewModel.addMember(newMemberName.trim())
                                         newMemberName = ""
                                     }
                                 },
+                                enabled = !isAddingMember && newMemberName.isNotBlank(),
                                 modifier = Modifier.size(36.dp),
                                 shape = CircleShape
                             ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = "Add Member",
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                if (isAddingMember) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Add Member",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     },
@@ -187,7 +197,7 @@ fun GroupSettingsScreen(
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
-                            if (newMemberName.isNotBlank()) {
+                            if (newMemberName.isNotBlank() && !isAddingMember) {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.addMember(newMemberName.trim())
                                 newMemberName = ""

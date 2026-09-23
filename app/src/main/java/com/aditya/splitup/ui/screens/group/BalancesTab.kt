@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,25 @@ fun BalancesTab(
     val currentUid = viewModel.currentUid
     val haptic = LocalHapticFeedback.current
 
+    // Animate total spent when user moves to Balances tab after adding/modifying an expense
+    var displayedTotal by remember { mutableDoubleStateOf(viewModel.lastSeenBalancesTotal ?: totalSpent) }
+    var balancesCycle by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(isTabActive, totalSpent) {
+        if (!isTabActive) return@LaunchedEffect
+
+        val previous = viewModel.lastSeenBalancesTotal
+        if (previous != null && Math.abs(previous - totalSpent) > 0.001) {
+            displayedTotal = previous
+            delay(120)
+            balancesCycle++
+            displayedTotal = totalSpent
+            viewModel.lastSeenBalancesTotal = totalSpent
+        } else {
+            displayedTotal = totalSpent
+            viewModel.lastSeenBalancesTotal = totalSpent
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -96,12 +116,13 @@ fun BalancesTab(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         AnimatedAmount(
-                            amount = totalSpent,
+                            amount = displayedTotal,
                             currencyCode = currentCurrency,
                             style = AmountStyleLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             showStyledSymbol = true,
-                            symbolColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            symbolColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                            cycle = balancesCycle
                         )
                     }
 
@@ -193,6 +214,7 @@ fun BalancesTab(
                     netBalance = balance.netBalance,
                     currencyCode = currentCurrency,
                     isCurrentUser = isSelf,
+                    cycle = balancesCycle,
                     modifier = Modifier.animateItem()
                 )
             }

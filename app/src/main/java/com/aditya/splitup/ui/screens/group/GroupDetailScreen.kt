@@ -123,7 +123,8 @@ fun GroupDetailScreen(
 
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 2
             ) { page ->
                 when (page) {
                     0 -> ExpenseListTab(
@@ -151,7 +152,8 @@ fun GroupDetailScreen(
                         onEditExpense = { expense ->
                             expenseToEdit = expense
                             showAddExpenseSheet = true
-                        }
+                        },
+                        isTabActive = (pagerState.currentPage == 2)
                     )
                 }
             }

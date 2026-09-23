@@ -55,7 +55,8 @@ import java.util.Locale
 @Composable
 fun BreakdownTab(
     viewModel: GroupViewModel,
-    onEditExpense: (Expense) -> Unit
+    onEditExpense: (Expense) -> Unit,
+    isTabActive: Boolean = true
 ) {
     val group by viewModel.group.collectAsStateWithLifecycle()
     val categorySpendings by viewModel.categorySpendings.collectAsStateWithLifecycle()
@@ -248,14 +249,17 @@ fun BreakdownTab(
                                 }
                         ) {
                             val animProgress = remember { Animatable(0f) }
-                            LaunchedEffect(categorySpendings) {
-                                animProgress.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessLow
+                            LaunchedEffect(isTabActive, categorySpendings) {
+                                if (isTabActive) {
+                                    animProgress.snapTo(0f)
+                                    animProgress.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioLowBouncy,
+                                            stiffness = Spring.StiffnessLow
+                                        )
                                     )
-                                )
+                                }
                             }
 
                             val slicePops = categorySpendings.map { item ->

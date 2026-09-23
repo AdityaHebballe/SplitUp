@@ -97,6 +97,7 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun rejoinGroup(memberFsId: String, memberName: String, onSuccess: (Long) -> Unit) {
+        if (_state.value is JoinState.Loading) return
         val invite = pendingInvite ?: return
         val uid = syncRepo.firestore.currentUid ?: return
 
@@ -195,6 +196,7 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun joinGroup(memberName: String, onSuccess: (Long) -> Unit) {
+        if (_state.value is JoinState.Loading) return
         val invite = pendingInvite ?: return
         if (memberName.isBlank()) return
         val uid = syncRepo.firestore.currentUid ?: return
