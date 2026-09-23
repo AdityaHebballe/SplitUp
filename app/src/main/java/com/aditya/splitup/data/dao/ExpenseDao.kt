@@ -64,4 +64,13 @@ interface ExpenseDao {
         deleteSplitsForExpense(expense.id)
         insertSplits(splits.map { it.copy(expenseId = expense.id) })
     }
+
+    @Query("SELECT * FROM expense_splits WHERE memberId = :memberId")
+    suspend fun getSplitsByMemberId(memberId: Long): List<ExpenseSplit>
+
+    @Query("DELETE FROM expense_splits WHERE id = :id")
+    suspend fun deleteSplitById(id: Long)
+
+    @Query("UPDATE expense_splits SET memberId = :newMemberId WHERE id = :splitId")
+    suspend fun updateSplitMember(splitId: Long, newMemberId: Long)
 }

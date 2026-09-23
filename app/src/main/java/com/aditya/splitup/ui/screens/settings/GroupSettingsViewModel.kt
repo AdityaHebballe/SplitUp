@@ -10,6 +10,7 @@ import com.aditya.splitup.data.model.Member
 import com.aditya.splitup.data.model.SplitGroup
 import com.aditya.splitup.data.repository.GroupRepository
 import com.aditya.splitup.data.sync.InviteRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,72 +104,74 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
         val currentGroup = _group.value ?: return
         val trimmed = name.trim()
         if (trimmed.isBlank()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val existingLocal = db.memberDao().getMembersByGroupOnce(currentGroup.id)
             if (existingLocal.any { it.name.trim().equals(trimmed, ignoreCase = true) }) {
                 Log.d("GroupSettingsVM", "Member with name $trimmed already exists")
                 return@launch
             }
 
-            var fsId: String? = null
+            // Insert locally first so UI updates immediately and member has a primary key
+            val newMember = Member(
+                groupId = currentGroup.id,
+                name = trimmed
+            )
+            val localId = repository.insertMember(newMember)
+
             if (currentGroup.firestoreId != null) {
                 try {
-                    fsId = syncRepo.firestore.addMember(
+                    val fsId = syncRepo.firestore.addMember(
                         currentGroup.firestoreId,
-                        Member(groupId = currentGroup.id, name = trimmed)
+                        newMember.copy(id = localId)
                     )
+                    // Update local member with firestoreId.
+                    // If snapshot listener fires before this, reconcileMembers matches by name and sets firestoreId without duplicate insertion.
+                    repository.updateMember(newMember.copy(id = localId, firestoreId = fsId))
                 } catch (e: Exception) {
                     Log.e("GroupSettingsVM", "Failed to add member to Firestore", e)
                 }
-            }
-
-            // If reconcileMembers already inserted via Firestore snapshot, do not re-insert
-            if (fsId != null) {
-                val alreadyInserted = db.memberDao().getMemberByFirestoreId(fsId)
-                if (alreadyInserted == null) {
-                    repository.insertMember(
-                        Member(
-                            groupId = currentGroup.id,
-                            firestoreId = fsId,
-                            name = trimmed
-                        )
-                    )
-                }
-            } else {
-                repository.insertMember(
-                    Member(
-                        groupId = currentGroup.id,
-                        name = trimmed
-                    )
-                )
             }
         }
     }
 
     fun removeMember(member: Member) {
         val currentGroup = _group.value ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val allMembers = db.memberDao().getMembersByGroupOnce(currentGroup.id)
 
-            // If there are duplicate local records for the exact same firestoreId, only delete this local record!
-            val duplicatesByFsId = if (member.firestoreId != null) {
-                allMembers.filter { it.firestoreId == member.firestoreId }
-            } else emptyList()
+            // Check if there is another member that is a duplicate of this one
+            // 1. By firestoreId:
+            val duplicateByFsId = if (member.firestoreId != null) {
+                allMembers.firstOrNull { it.id != member.id && it.firestoreId == member.firestoreId }
+            } else null
 
-            if (duplicatesByFsId.size > 1) {
-                db.memberDao().deleteMember(member)
+            // 2. By name:
+            val duplicateByName = if (duplicateByFsId == null) {
+                allMembers.firstOrNull { it.id != member.id && it.name.trim().equals(member.name.trim(), ignoreCase = true) }
+            } else null
+
+            val survivingDuplicate = duplicateByFsId ?: duplicateByName
+
+            if (survivingDuplicate != null) {
+                // This is a duplicate! Merge all references into the surviving duplicate and remove this row.
+                // DO NOT delete from Firestore because the member still exists in the group!
+                try {
+                    db.memberDao().mergeAndRemoveDuplicateMember(
+                        keepMemberId = survivingDuplicate.id,
+                        duplicateMemberId = member.id,
+                        expenseDao = db.expenseDao()
+                    )
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to merge duplicate member ${member.name}", e)
+                }
                 return@launch
             }
 
-            // If there's an unlinked local duplicate matching an already-synced member, delete only this local row
-            if (member.firestoreId == null && allMembers.any { it.name.trim().equals(member.name.trim(), ignoreCase = true) && it.id != member.id }) {
-                db.memberDao().deleteMember(member)
-                return@launch
-            }
-
+            // Not a duplicate — this is a single member the user wants to remove
             val hasExpenses = db.expenseDao().getExpensesByGroupOnce(currentGroup.id).any { it.paidByMemberId == member.id }
             val hasPayments = db.paymentDao().getPaymentsByGroupOnce(currentGroup.id).any { it.fromMemberId == member.id || it.toMemberId == member.id }
-            val isReferenced = hasExpenses || hasPayments
+            val hasSplits = db.expenseDao().getSplitsByMemberId(member.id).isNotEmpty()
+            val isReferenced = hasExpenses || hasPayments || hasSplits
 
             if (currentGroup.firestoreId != null && member.firestoreId != null) {
                 try {
@@ -183,11 +186,13 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
             }
 
             if (isReferenced) {
+                // Member has financial records; unlink them so their app account is disconnected while preserving historical data
                 repository.updateMember(member.copy(linkedUid = null))
             } else {
                 try {
                     repository.deleteMember(member)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.e("GroupSettingsVM", "Failed to delete member, falling back to unlink", e)
                     repository.updateMember(member.copy(linkedUid = null))
                 }
             }

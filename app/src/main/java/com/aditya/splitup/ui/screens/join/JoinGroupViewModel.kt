@@ -130,15 +130,28 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
 
                     val existingMem = db.memberDao().getMemberByFirestoreId(fsId)
                     if (existingMem == null) {
-                        db.memberDao().insertMember(
-                            Member(
-                                groupId = localGroupId,
-                                firestoreId = fsId,
-                                name = name,
-                                defaultRatioPart = ratio,
-                                linkedUid = linkedUid
+                        val existingByName = db.memberDao().getMembersByGroupOnce(localGroupId)
+                            .firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+                        if (existingByName != null) {
+                            db.memberDao().updateMember(
+                                existingByName.copy(
+                                    firestoreId = fsId,
+                                    name = name,
+                                    defaultRatioPart = ratio,
+                                    linkedUid = linkedUid
+                                )
                             )
-                        )
+                        } else {
+                            db.memberDao().insertMember(
+                                Member(
+                                    groupId = localGroupId,
+                                    firestoreId = fsId,
+                                    name = name,
+                                    defaultRatioPart = ratio,
+                                    linkedUid = linkedUid
+                                )
+                            )
+                        }
                     } else {
                         db.memberDao().updateMember(
                             existingMem.copy(
@@ -245,15 +258,28 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     val linkedUid = if (fsId == targetFsMemberId) uid else doc["linkedUid"] as? String
                     val existingMem = db.memberDao().getMemberByFirestoreId(fsId)
                     if (existingMem == null) {
-                        db.memberDao().insertMember(
-                            Member(
-                                groupId = localGroupId,
-                                firestoreId = fsId,
-                                name = name,
-                                defaultRatioPart = ratio,
-                                linkedUid = linkedUid
+                        val existingByName = db.memberDao().getMembersByGroupOnce(localGroupId)
+                            .firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+                        if (existingByName != null) {
+                            db.memberDao().updateMember(
+                                existingByName.copy(
+                                    firestoreId = fsId,
+                                    name = name,
+                                    defaultRatioPart = ratio,
+                                    linkedUid = linkedUid
+                                )
                             )
-                        )
+                        } else {
+                            db.memberDao().insertMember(
+                                Member(
+                                    groupId = localGroupId,
+                                    firestoreId = fsId,
+                                    name = name,
+                                    defaultRatioPart = ratio,
+                                    linkedUid = linkedUid
+                                )
+                            )
+                        }
                     } else {
                         db.memberDao().updateMember(
                             existingMem.copy(
@@ -267,14 +293,25 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val currentLocalTarget = db.memberDao().getMemberByFirestoreId(targetFsMemberId)
                 if (currentLocalTarget == null) {
-                    db.memberDao().insertMember(
-                        Member(
-                            groupId = localGroupId,
-                            firestoreId = targetFsMemberId,
-                            name = memberName,
-                            linkedUid = uid
+                    val targetByName = db.memberDao().getMembersByGroupOnce(localGroupId)
+                        .firstOrNull { it.name.trim().equals(memberName.trim(), ignoreCase = true) }
+                    if (targetByName != null) {
+                        db.memberDao().updateMember(
+                            targetByName.copy(
+                                firestoreId = targetFsMemberId,
+                                linkedUid = uid
+                            )
                         )
-                    )
+                    } else {
+                        db.memberDao().insertMember(
+                            Member(
+                                groupId = localGroupId,
+                                firestoreId = targetFsMemberId,
+                                name = memberName,
+                                linkedUid = uid
+                            )
+                        )
+                    }
                 } else {
                     db.memberDao().updateMember(
                         currentLocalTarget.copy(name = memberName, linkedUid = uid)

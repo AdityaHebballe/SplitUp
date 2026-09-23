@@ -305,20 +305,36 @@ class SyncRepository(
         val membersInExpenses = groupExpenses.map { it.paidByMemberId }.toSet()
         val membersInPayments = groupPayments.flatMap { listOf(it.fromMemberId, it.toMemberId) }.toSet()
 
-        // 1. DEDUPLICATE: If multiple local members have the exact same firestoreId, keep one and delete duplicates
+        // 1. DEDUPLICATE: If multiple local members have the exact same firestoreId, keep one and merge duplicates
         val rawLocalMembers = db.memberDao().getMembersByGroupOnce(localGroupId)
         val byFsIdGroups = rawLocalMembers.filter { it.firestoreId != null }.groupBy { it.firestoreId!! }
         for ((_, duplicates) in byFsIdGroups) {
             if (duplicates.size > 1) {
-                val keep = duplicates.firstOrNull { it.id in membersInExpenses || it.id in membersInPayments }
+                val keep = duplicates.firstOrNull { it.linkedUid != null }
+                    ?: duplicates.firstOrNull { it.id in membersInExpenses || it.id in membersInPayments }
                     ?: duplicates.minByOrNull { it.id } ?: duplicates.first()
                 for (dup in duplicates) {
                     if (dup.id != keep.id) {
                         try {
-                            db.memberDao().deleteMember(dup)
-                        } catch (_: Exception) {}
+                            db.memberDao().mergeAndRemoveDuplicateMember(keep.id, dup.id, db.expenseDao())
+                        } catch (e: Exception) {
+                            Log.e("SyncRepository", "Failed to merge duplicate member ${dup.name}", e)
+                        }
                     }
                 }
+            }
+        }
+
+        // 2. DEDUPLICATE: If an unlinked local member has the exact same name as a synced member, merge it!
+        val afterFsDups = db.memberDao().getMembersByGroupOnce(localGroupId)
+        val syncedByName = afterFsDups.filter { it.firestoreId != null }.associateBy { it.name.trim().lowercase() }
+        val unlinkedDuplicates = afterFsDups.filter { it.firestoreId == null && it.name.trim().lowercase() in syncedByName }
+        for (unlinked in unlinkedDuplicates) {
+            val keep = syncedByName[unlinked.name.trim().lowercase()] ?: continue
+            try {
+                db.memberDao().mergeAndRemoveDuplicateMember(keep.id, unlinked.id, db.expenseDao())
+            } catch (e: Exception) {
+                Log.e("SyncRepository", "Failed to merge unlinked duplicate member ${unlinked.name}", e)
             }
         }
 
@@ -372,10 +388,11 @@ class SyncRepository(
             }
         }
 
-        // Delete locals no longer in remote (safely unlinking if referenced in expenses or payments)
+        // Delete locals no longer in remote (safely unlinking if referenced in expenses, payments, or splits)
         val refreshedLocals = db.memberDao().getMembersByGroupOnce(localGroupId)
         for (member in refreshedLocals.filter { it.firestoreId != null && it.firestoreId !in remoteFsIds }) {
-            val isUsed = member.id in membersInExpenses || member.id in membersInPayments
+            val splits = db.expenseDao().getSplitsByMemberId(member.id)
+            val isUsed = member.id in membersInExpenses || member.id in membersInPayments || splits.isNotEmpty()
             if (isUsed) {
                 db.memberDao().updateMember(member.copy(linkedUid = null))
             } else {
