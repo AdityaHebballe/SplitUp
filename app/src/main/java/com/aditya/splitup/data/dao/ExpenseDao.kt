@@ -73,4 +73,10 @@ interface ExpenseDao {
 
     @Query("UPDATE expense_splits SET memberId = :newMemberId WHERE id = :splitId")
     suspend fun updateSplitMember(splitId: Long, newMemberId: Long)
+
+    @Query("SELECT * FROM expense_splits WHERE expenseId = :expenseId AND memberId = :memberId LIMIT 1")
+    suspend fun getSplitForExpenseAndMember(expenseId: Long, memberId: Long): ExpenseSplit?
+
+    @Query("UPDATE expense_splits SET ratioPart = :ratioPart WHERE id = :id")
+    suspend fun updateSplitRatio(id: Long, ratioPart: Int)
 }

@@ -101,7 +101,8 @@ class FirestoreService {
         db.collection("groups/$groupId/members").document(memberFsId).update(
             mapOf(
                 "linkedUid" to uid,
-                "previousUid" to null
+                "previousUid" to null,
+                "isRemoved" to false
             )
         ).await()
         addUserToGroup(groupId, uid)
@@ -117,6 +118,42 @@ class FirestoreService {
             )
         ).await()
         addUserToGroup(groupId, uid)
+    }
+
+    /**
+     * Atomically claims a member doc for [uid], re-reading its current `linkedUid` inside a
+     * Firestore transaction rather than trusting a caller's earlier (non-transactional) read.
+     * Returns false — instead of writing — if the doc was already claimed by a different uid
+     * in the meantime, so the caller can fall back to creating a brand-new member instead of
+     * silently overwriting someone else's claim (the race JoinGroupViewModel.joinGroup used to
+     * be exposed to when two joins targeted the same candidate doc concurrently).
+     */
+    suspend fun claimMemberTransactional(
+        groupId: String,
+        memberFsId: String,
+        uid: String,
+        newName: String? = null
+    ): Boolean {
+        val docRef = db.collection("groups/$groupId/members").document(memberFsId)
+        val claimed = db.runTransaction { transaction ->
+            val snapshot = transaction.get(docRef)
+            val currentLinkedUid = snapshot.getString("linkedUid")
+            if (currentLinkedUid != null && currentLinkedUid != uid) {
+                return@runTransaction false
+            }
+            val updates = mutableMapOf<String, Any?>(
+                "linkedUid" to uid,
+                "previousUid" to null,
+                "isRemoved" to false
+            )
+            if (newName != null) updates["name"] = newName
+            transaction.update(docRef, updates)
+            true
+        }.await()
+        if (claimed) {
+            addUserToGroup(groupId, uid)
+        }
+        return claimed
     }
 
     suspend fun unlinkMember(groupId: String, memberFirestoreId: String, linkedUid: String? = null) {
@@ -169,6 +206,8 @@ class FirestoreService {
     suspend fun mergeDuplicateMemberInFirestore(groupId: String, keepFsId: String, duplicateFsId: String) {
         if (keepFsId == duplicateFsId) return
         try {
+            val pendingUpdates = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any>>>()
+
             // 1. Reassign expenses paid by duplicate
             val expensesSnapshot = db.collection("groups/$groupId/expenses").get().await()
             for (doc in expensesSnapshot.documents) {
@@ -198,7 +237,7 @@ class FirestoreService {
                     needsUpdate = true
                 }
                 if (needsUpdate) {
-                    doc.reference.update(updates).await()
+                    pendingUpdates.add(doc.reference to updates)
                 }
             }
 
@@ -213,12 +252,28 @@ class FirestoreService {
                     updates["toMemberFsId"] = keepFsId
                 }
                 if (updates.isNotEmpty()) {
-                    doc.reference.update(updates).await()
+                    pendingUpdates.add(doc.reference to updates)
                 }
             }
 
-            // 3. Delete duplicate member document from Firestore
-            db.collection("groups/$groupId/members").document(duplicateFsId).delete().await()
+            // 3. Apply all reassignments plus the duplicate-member delete atomically, so a
+            // crash or dropped connection never leaves a partially-reassigned state.
+            val dupDocRef = db.collection("groups/$groupId/members").document(duplicateFsId)
+            if (pendingUpdates.isEmpty()) {
+                val batch = db.batch()
+                batch.delete(dupDocRef)
+                batch.commit().await()
+            } else {
+                val chunks = pendingUpdates.chunked(499)
+                for (i in chunks.indices) {
+                    val batch = db.batch()
+                    chunks[i].forEach { (ref, updates) -> batch.update(ref, updates) }
+                    if (i == chunks.lastIndex) {
+                        batch.delete(dupDocRef)
+                    }
+                    batch.commit().await()
+                }
+            }
         } catch (e: Exception) {
             Log.e("FirestoreService", "Failed to merge duplicate member $duplicateFsId into $keepFsId in Firestore", e)
         }
@@ -302,6 +357,26 @@ class FirestoreService {
             )
         ).await()
         return doc.id
+    }
+
+    suspend fun updatePayment(
+        groupId: String,
+        payment: Payment,
+        memberFsIdMap: Map<Long, String>
+    ) {
+        val fsId = payment.firestoreId ?: return
+        db.collection("groups/$groupId/payments").document(fsId).update(
+            mapOf(
+                "fromMemberFsId" to (memberFsIdMap[payment.fromMemberId] ?: ""),
+                "toMemberFsId" to (memberFsIdMap[payment.toMemberId] ?: ""),
+                "amount" to payment.amount,
+                "currency" to payment.currency
+            )
+        ).await()
+    }
+
+    suspend fun deletePayment(groupId: String, paymentFirestoreId: String) {
+        db.collection("groups/$groupId/payments").document(paymentFirestoreId).delete().await()
     }
 
     // ─── Listeners ────────────────────────────────────────────────────────────
@@ -397,7 +472,7 @@ class FirestoreService {
         val memberDocs = db.collection("groups/$firestoreGroupId/members")
             .whereEqualTo("linkedUid", uid).get().await()
         for (doc in memberDocs.documents) {
-            doc.reference.update(mapOf("linkedUid" to null, "previousUid" to uid)).await()
+            doc.reference.update(mapOf("linkedUid" to null, "previousUid" to uid, "isRemoved" to true)).await()
         }
     }
 

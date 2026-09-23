@@ -39,6 +39,7 @@ fun AddExpenseSheet(
     availableGroups: List<SplitGroup> = emptyList(),
     expenseToEdit: Expense? = null,
     onDismiss: () -> Unit,
+    onExpenseSaved: (synced: Boolean) -> Unit = {},
     viewModel: AddExpenseViewModel
 ) {
     var selectedGroupId by remember(initialGroupId, availableGroups, expenseToEdit) {
@@ -309,7 +310,10 @@ fun AddExpenseSheet(
                                     category = category,
                                     paidByMemberId = payerId,
                                     ratios = ratios,
-                                    onSuccess = safeDismiss
+                                    onSuccess = { synced ->
+                                        onExpenseSaved(synced)
+                                        safeDismiss()
+                                    }
                                 )
                             } else {
                                 viewModel.updateExpense(
@@ -320,7 +324,10 @@ fun AddExpenseSheet(
                                     category = category,
                                     paidByMemberId = payerId,
                                     ratios = ratios,
-                                    onSuccess = safeDismiss
+                                    onSuccess = { synced ->
+                                        onExpenseSaved(synced)
+                                        safeDismiss()
+                                    }
                                 )
                             }
                         }

@@ -64,11 +64,16 @@ interface MemberDao {
         reassignGroupDefaultPayer(keepMemberId, duplicateMemberId)
 
         val duplicateSplits = expenseDao.getSplitsByMemberId(duplicateMemberId)
-        val keepSplits = expenseDao.getSplitsByMemberId(keepMemberId)
-        val keepExpenseIds = keepSplits.map { it.expenseId }.toSet()
 
         for (split in duplicateSplits) {
-            if (split.expenseId in keepExpenseIds) {
+            val keepSplit = expenseDao.getSplitForExpenseAndMember(split.expenseId, keepMemberId)
+            if (keepSplit != null) {
+                // Both the kept and duplicate member had a split on this expense - combine
+                // their ratio parts onto the kept split instead of silently discarding one,
+                // so the expense's total split ratio is preserved.
+                val combinedRatio = keepSplit.ratioPart + split.ratioPart
+                android.util.Log.d("MemberDao", "Combining split on expense ${split.expenseId}: keep ratio ${keepSplit.ratioPart} + dup ratio ${split.ratioPart} = $combinedRatio")
+                expenseDao.updateSplitRatio(keepSplit.id, combinedRatio)
                 expenseDao.deleteSplitById(split.id)
             } else {
                 expenseDao.updateSplitMember(split.id, keepMemberId)

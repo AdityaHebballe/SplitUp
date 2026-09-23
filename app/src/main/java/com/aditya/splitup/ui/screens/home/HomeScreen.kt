@@ -2,9 +2,17 @@ package com.aditya.splitup.ui.screens.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -13,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -281,11 +290,59 @@ fun GroupCard(
     val symbol = CurrencyUtils.getSymbol(group.defaultCurrency)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val motion = MaterialTheme.motionScheme
+
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        animationSpec = motion.defaultSpatialSpec(),
         label = "GroupCardScale"
     )
+
+    // Expressive M3 Cookie Shape dynamics:
+    // 1. Entrance spring: pops and spins in when card enters
+    val entranceAnim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        entranceAnim.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = 0.65f,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        )
+    }
+
+    // 2. Ambient continuous slow rotation so cookie lobes are visibly alive
+    val infiniteTransition = rememberInfiniteTransition(label = "cookieAmbient_${group.id}")
+    val ambientRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ambientRotation"
+    )
+
+    // 3. Tactile response on press
+    val pressAngle by animateFloatAsState(
+        targetValue = if (isPressed) 30f else 0f,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "pressAngle"
+    )
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 1.15f else 1f,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "pressScale"
+    )
+    val arrowOffset by animateDpAsState(
+        targetValue = if (isPressed) 4.dp else 0.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "arrowOffset"
+    )
+
+    val currentRotation = (1f - entranceAnim.value) * -90f + ambientRotation + pressAngle
+    val currentScale = (0.4f + 0.6f * entranceAnim.value) * pressScale
+    val cookieShape = MaterialShapes.Cookie9Sided.toShape()
 
     ElevatedCard(
         onClick = onClick,
@@ -310,19 +367,22 @@ fun GroupCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Surface(
-                    shape = MaterialShapes.Cookie9Sided.toShape(),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(48.dp)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .scale(currentScale)
+                        .rotate(currentRotation)
+                        .clip(cookieShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = group.name.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
+                    Text(
+                        text = group.name.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.rotate(-currentRotation)
+                    )
                 }
 
                 Column {
@@ -342,7 +402,8 @@ fun GroupCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.offset(x = arrowOffset)
             )
         }
     }

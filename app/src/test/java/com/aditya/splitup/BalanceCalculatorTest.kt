@@ -159,4 +159,98 @@ class BalanceCalculatorTest {
         assertEquals(55.0, bobBal.totalOwed, 0.001)
         assertEquals(-55.0, bobBal.netBalance, 0.001)
     }
+
+    @Test
+    fun testSettledThresholdBehavior() {
+        val alice = Member(id = 1L, groupId = 100L, name = "Alice", defaultRatioPart = 1)
+        val bob = Member(id = 2L, groupId = 100L, name = "Bob", defaultRatioPart = 1)
+        val members = listOf(alice, bob)
+
+        // Sub-cent balance: 0.008 owed -> below 0.01 threshold -> treated as settled (0 settlements)
+        val expenseSubCent = Expense(
+            id = 1L,
+            groupId = 100L,
+            paidByMemberId = alice.id,
+            amount = 0.016, // 0.008 each
+            currency = "USD"
+        )
+        val splitsSubCent = mapOf(
+            1L to listOf(
+                ExpenseSplit(id = 1L, expenseId = 1L, memberId = alice.id, ratioPart = 1),
+                ExpenseSplit(id = 2L, expenseId = 1L, memberId = bob.id, ratioPart = 1)
+            )
+        )
+
+        val settlementsSubCent = calculator.calculateSettlements(
+            members = members,
+            expenses = listOf(expenseSubCent),
+            splits = splitsSubCent,
+            payments = emptyList(),
+            rates = emptyMap(),
+            groupCurrency = "USD"
+        )
+        assertEquals(0, settlementsSubCent.size)
+
+        // Above threshold: 0.05 owed -> generates 1 settlement
+        val expenseAboveThreshold = Expense(
+            id = 2L,
+            groupId = 100L,
+            paidByMemberId = alice.id,
+            amount = 0.10, // 0.05 each
+            currency = "USD"
+        )
+        val splitsAboveThreshold = mapOf(
+            2L to listOf(
+                ExpenseSplit(id = 3L, expenseId = 2L, memberId = alice.id, ratioPart = 1),
+                ExpenseSplit(id = 4L, expenseId = 2L, memberId = bob.id, ratioPart = 1)
+            )
+        )
+
+        val settlementsAbove = calculator.calculateSettlements(
+            members = members,
+            expenses = listOf(expenseAboveThreshold),
+            splits = splitsAboveThreshold,
+            payments = emptyList(),
+            rates = emptyMap(),
+            groupCurrency = "USD"
+        )
+        assertEquals(1, settlementsAbove.size)
+        assertEquals(0.05, settlementsAbove[0].amount, 0.001)
+    }
+
+    @Test
+    fun testFormerMemberExcludedFromActiveBalances() {
+        val alice = Member(id = 1L, groupId = 100L, name = "Alice", defaultRatioPart = 1, isRemoved = false)
+        val bob = Member(id = 2L, groupId = 100L, name = "Bob", defaultRatioPart = 1, isRemoved = false)
+        val charlie = Member(id = 3L, groupId = 100L, name = "Charlie", defaultRatioPart = 1, isRemoved = true)
+
+        val allMembers = listOf(alice, bob, charlie)
+        val activeMembers = allMembers.filter { !it.isRemoved }
+
+        val expense = Expense(
+            id = 1L,
+            groupId = 100L,
+            paidByMemberId = alice.id,
+            amount = 100.0,
+            currency = "USD"
+        )
+        val splits = mapOf(
+            1L to listOf(
+                ExpenseSplit(id = 1L, expenseId = 1L, memberId = alice.id, ratioPart = 1),
+                ExpenseSplit(id = 2L, expenseId = 1L, memberId = bob.id, ratioPart = 1)
+            )
+        )
+
+        val balances = calculator.calculateMemberBalances(
+            members = activeMembers,
+            expenses = listOf(expense),
+            splits = splits,
+            payments = emptyList(),
+            rates = emptyMap(),
+            groupCurrency = "USD"
+        )
+
+        assertEquals(2, balances.size)
+        assertEquals(null, balances.find { it.memberId == charlie.id })
+    }
 }

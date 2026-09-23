@@ -17,6 +17,7 @@ import com.aditya.splitup.domain.MemberBalance
 import com.aditya.splitup.domain.Settlement
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 
 class GroupViewModel(application: Application, val groupId: Long) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
@@ -36,6 +37,15 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
     val members: StateFlow<List<Member>> = memberDao.getMembersByGroup(groupId)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    // Active (non-removed) members only. Balances/settlements and member-selection UI
+    // (SettleUpSheet) should use this instead of `members` so a former member never
+    // appears as a payer/recipient option or an outstanding balance row — `members`
+    // itself stays unfiltered so historical payer-name lookups (e.g. in ExpenseListTab)
+    // still resolve for expenses a now-removed member paid in the past.
+    val activeMembers: StateFlow<List<Member>> = members
+        .map { list -> list.filter { !it.isRemoved } }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     val expenses: StateFlow<List<Expense>> = expenseDao.getExpensesByGroup(groupId)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -47,14 +57,28 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
 
     private val ratesCache = MutableStateFlow<Map<Pair<String, String>, Double>>(emptyMap())
 
+    // True when at least one required exchange rate could not be fetched, so the
+    // displayed rate (1.0 fallback, not cached) may not reflect the real conversion.
+    private val _ratesStale = MutableStateFlow(false)
+    val ratesStale: StateFlow<Boolean> = _ratesStale.asStateFlow()
+
+    // One-shot events for the UI (e.g. a snackbar) when a write is saved locally
+    // but failed to sync to the cloud, so the user isn't left thinking it worked.
+    private val _syncWarnings = Channel<String>(Channel.BUFFERED)
+    val syncWarnings: Flow<String> = _syncWarnings.receiveAsFlow()
+
     init {
         // Start Firestore sync once we know the group's firestoreId
         viewModelScope.launch {
-            group.filterNotNull().first().let { g ->
-                if (g.firestoreId != null) {
-                    syncRepo.startSync(g.firestoreId!!, g.id)
-                    syncRepo.syncLocalUnsyncedData(g.id)
+            try {
+                group.filterNotNull().first().let { g ->
+                    if (g.firestoreId != null) {
+                        syncRepo.startSync(g.firestoreId!!, g.id)
+                        syncRepo.syncLocalUnsyncedData(g.id)
+                    }
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("GroupViewModel", "Failed to start sync", e)
             }
         }
 
@@ -70,19 +94,23 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
                         .distinct()
 
                     val newRates = ratesCache.value.toMutableMap()
+                    var anyStale = false
                     for (fromCur in foreignCurrencies) {
                         val key = fromCur to targetCurrency
+                        // Only skip currencies we've already fetched successfully — a
+                        // previously failed fetch is retried here instead of being
+                        // cached as a permanent (and possibly wrong) 1.0.
                         if (!newRates.containsKey(key)) {
                             try {
                                 val rate = rateRepo.getRate(fromCur, targetCurrency)
                                 newRates[key] = rate
                             } catch (e: Exception) {
-                                // Fallback 1.0 if offline or error
-                                newRates[key] = 1.0
+                                anyStale = true
                             }
                         }
                     }
                     ratesCache.value = newRates
+                    _ratesStale.value = anyStale
                 }
             }
         }
@@ -101,7 +129,7 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
     }
 
     val memberBalances: StateFlow<List<MemberBalance>> = combine(
-        members,
+        activeMembers,
         group,
         ratesCache,
         transactionsFlow
@@ -126,7 +154,7 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
     }.stateIn(viewModelScope, SharingStarted.Lazily, 0.0)
 
     val settlements: StateFlow<List<Settlement>> = combine(
-        members,
+        activeMembers,
         group,
         ratesCache,
         transactionsFlow
@@ -198,7 +226,10 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
         viewModelScope.launch {
             val currentGroup = group.value
             if (currentGroup != null) {
-                syncRepo.deleteExpense(currentGroup, expense)
+                val synced = syncRepo.deleteExpense(currentGroup, expense)
+                if (!synced) {
+                    _syncWarnings.trySend("Deleted locally — couldn't sync to the cloud, will retry later")
+                }
             } else {
                 expenseDao.deleteExpense(expense)
             }
@@ -216,12 +247,48 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
                 currency = currency
             )
             if (currentGroup != null) {
-                syncRepo.recordPayment(currentGroup, payment)
+                val synced = syncRepo.recordPayment(currentGroup, payment)
+                if (!synced) {
+                    _syncWarnings.trySend("Saved locally — couldn't sync to the cloud, will retry later")
+                }
             } else {
                 paymentDao.insertPayment(payment)
             }
             onSuccess()
         }
+    }
+
+    fun updatePayment(payment: Payment, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            val currentGroup = group.value
+            if (currentGroup != null) {
+                val synced = syncRepo.updatePayment(currentGroup, payment)
+                if (!synced) {
+                    _syncWarnings.trySend("Saved locally — couldn't sync to the cloud, will retry later")
+                }
+            } else {
+                paymentDao.updatePayment(payment)
+            }
+            onSuccess()
+        }
+    }
+
+    fun deletePayment(payment: Payment) {
+        viewModelScope.launch {
+            val currentGroup = group.value
+            if (currentGroup != null) {
+                val synced = syncRepo.deletePayment(currentGroup, payment)
+                if (!synced) {
+                    _syncWarnings.trySend("Deleted locally — couldn't sync to the cloud, will retry later")
+                }
+            } else {
+                paymentDao.deletePayment(payment)
+            }
+        }
+    }
+
+    fun postSyncWarning(message: String) {
+        _syncWarnings.trySend(message)
     }
 }
 

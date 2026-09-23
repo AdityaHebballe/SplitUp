@@ -1,6 +1,11 @@
 package com.aditya.splitup
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import com.aditya.splitup.data.AppDatabase
 import com.aditya.splitup.data.sync.FirestoreService
@@ -22,6 +27,37 @@ class SplitTrackerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         ensureAnonymousAuth()
+        registerConnectivityRetry()
+    }
+
+    // Retry any Firestore writes that failed while offline as soon as connectivity
+    // returns, instead of leaving local/remote data permanently diverged until the
+    // user happens to revisit a screen that triggers a sync.
+    private fun registerConnectivityRetry() {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        connectivityManager.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                retryUnsyncedGroups()
+            }
+        })
+    }
+
+    private fun retryUnsyncedGroups() {
+        appScope.launch {
+            try {
+                val groups = database.groupDao().getAllGroupsOnce()
+                for (group in groups) {
+                    if (group.firestoreId != null) {
+                        syncRepository.syncLocalUnsyncedData(group.id)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SplitTrackerApp", "Failed to retry unsynced groups", e)
+            }
+        }
     }
 
     private fun ensureAnonymousAuth() {

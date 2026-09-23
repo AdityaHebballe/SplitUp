@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Orchestrates Firestore ↔ Room sync.
@@ -28,50 +29,58 @@ class SyncRepository(
     private val db: AppDatabase
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val activeListeners = mutableMapOf<String, List<ListenerRegistration>>()
-    private val lastExpenseDocs = mutableMapOf<String, List<Map<String, Any?>>>()
-    private val lastPaymentDocs = mutableMapOf<String, List<Map<String, Any?>>>()
+    private val activeListeners = ConcurrentHashMap<String, List<ListenerRegistration>>()
+    private val lastExpenseDocs = ConcurrentHashMap<String, List<Map<String, Any?>>>()
+    private val lastPaymentDocs = ConcurrentHashMap<String, List<Map<String, Any?>>>()
 
     // ─── Sync lifecycle ───────────────────────────────────────────────────────
 
     fun startSync(firestoreGroupId: String, localGroupId: Long) {
-        if (activeListeners.containsKey(firestoreGroupId)) return   // already listening
-        Log.d("SyncRepository", "Starting sync for group $firestoreGroupId")
+        synchronized(activeListeners) {
+            if (activeListeners.containsKey(firestoreGroupId)) return
+            Log.d("SyncRepository", "Starting sync for group $firestoreGroupId")
 
-        val listeners = listOf(
-            firestore.observeGroup(firestoreGroupId) { remoteDoc ->
-                scope.launch { reconcileGroup(localGroupId, firestoreGroupId, remoteDoc) }
-            },
-            firestore.observeMembers(firestoreGroupId) { remoteDocs ->
-                scope.launch { reconcileMembers(localGroupId, firestoreGroupId, remoteDocs) }
-            },
-            firestore.observeExpenses(firestoreGroupId) { remoteDocs ->
-                scope.launch { reconcileExpenses(localGroupId, firestoreGroupId, remoteDocs) }
-            },
-            firestore.observePayments(firestoreGroupId) { remoteDocs ->
-                scope.launch { reconcilePayments(localGroupId, firestoreGroupId, remoteDocs) }
-            }
-        )
-        activeListeners[firestoreGroupId] = listeners
+            val listeners = listOf(
+                firestore.observeGroup(firestoreGroupId) { remoteDoc ->
+                    scope.launch { reconcileGroup(localGroupId, firestoreGroupId, remoteDoc) }
+                },
+                firestore.observeMembers(firestoreGroupId) { remoteDocs ->
+                    scope.launch { reconcileMembers(localGroupId, firestoreGroupId, remoteDocs) }
+                },
+                firestore.observeExpenses(firestoreGroupId) { remoteDocs ->
+                    scope.launch { reconcileExpenses(localGroupId, firestoreGroupId, remoteDocs) }
+                },
+                firestore.observePayments(firestoreGroupId) { remoteDocs ->
+                    scope.launch { reconcilePayments(localGroupId, firestoreGroupId, remoteDocs) }
+                }
+            )
+            activeListeners[firestoreGroupId] = listeners
+        }
     }
 
     fun stopSync(firestoreGroupId: String) {
-        activeListeners[firestoreGroupId]?.forEach { it.remove() }
-        activeListeners.remove(firestoreGroupId)
-        lastExpenseDocs.remove(firestoreGroupId)
-        lastPaymentDocs.remove(firestoreGroupId)
+        synchronized(activeListeners) {
+            activeListeners.remove(firestoreGroupId)?.forEach { it.remove() }
+            lastExpenseDocs.remove(firestoreGroupId)
+            lastPaymentDocs.remove(firestoreGroupId)
+        }
     }
 
     fun stopAllSync() {
-        activeListeners.values.forEach { list -> list.forEach { it.remove() } }
-        activeListeners.clear()
-        lastExpenseDocs.clear()
-        lastPaymentDocs.clear()
+        synchronized(activeListeners) {
+            activeListeners.values.forEach { list -> list.forEach { it.remove() } }
+            activeListeners.clear()
+            lastExpenseDocs.clear()
+            lastPaymentDocs.clear()
+        }
     }
 
     // ─── Write-through helpers ────────────────────────────────────────────────
 
-    suspend fun addExpense(group: SplitGroup, expense: Expense, splits: List<ExpenseSplit>) {
+    // Returns false when the group is Firestore-synced but the cloud write failed/was
+    // skipped, so callers can tell the user their data is saved locally only and will
+    // retry later, instead of silently treating a failed upload as success.
+    suspend fun addExpense(group: SplitGroup, expense: Expense, splits: List<ExpenseSplit>): Boolean {
         // 1. Insert into local Room DB immediately for instant UI responsiveness
         val localExpenseId = db.expenseDao().insertExpense(expense)
         db.expenseDao().insertSplits(splits.map { it.copy(expenseId = localExpenseId) })
@@ -98,6 +107,16 @@ class SyncRepository(
                     }
                 }
 
+                // Required members must have a firestoreId or the upload would write an
+                // empty memberFsId, which other clients silently misattribute to an
+                // arbitrary member. Leave the expense unsynced (firestoreId == null) so a
+                // later syncLocalUnsyncedData pass can retry once the member is synced.
+                val requiredMemberIds = splits.map { it.memberId } + expense.paidByMemberId
+                if (requiredMemberIds.any { memberFsIdMap[it] == null }) {
+                    Log.e("SyncRepository", "Aborting expense upload: missing firestoreId for a required member")
+                    return false
+                }
+
                 val fsExpId = firestore.addExpense(group.firestoreId!!, expense, splits, memberFsIdMap)
                 // Update local row with the new firestoreId (do NOT insert a second row!)
                 val current = db.expenseDao().getExpenseById(localExpenseId)
@@ -106,11 +125,13 @@ class SyncRepository(
                 }
             } catch (e: Exception) {
                 Log.e("SyncRepository", "Failed to upload expense to Firestore", e)
+                return false
             }
         }
+        return true
     }
 
-    suspend fun updateExpense(group: SplitGroup, expense: Expense, splits: List<ExpenseSplit>) {
+    suspend fun updateExpense(group: SplitGroup, expense: Expense, splits: List<ExpenseSplit>): Boolean {
         db.expenseDao().updateExpenseWithSplits(expense, splits)
         if (group.firestoreId != null && expense.firestoreId != null) {
             try {
@@ -118,22 +139,32 @@ class SyncRepository(
                 val memberFsIdMap = members
                     .filter { it.firestoreId != null }
                     .associate { it.id to it.firestoreId!! }
+                val requiredMemberIds = splits.map { it.memberId } + expense.paidByMemberId
+                if (requiredMemberIds.any { memberFsIdMap[it] == null }) {
+                    Log.e("SyncRepository", "Aborting expense update: missing firestoreId for a required member")
+                    return false
+                }
                 firestore.updateExpense(group.firestoreId!!, expense, splits, memberFsIdMap)
             } catch (e: Exception) {
                 Log.e("SyncRepository", "Failed to update expense in Firestore", e)
+                return false
             }
         }
+        return true
     }
 
-    suspend fun deleteExpense(group: SplitGroup, expense: Expense) {
+    suspend fun deleteExpense(group: SplitGroup, expense: Expense): Boolean {
+        var synced = true
         if (group.firestoreId != null && expense.firestoreId != null) {
             try {
                 firestore.deleteExpense(group.firestoreId!!, expense.firestoreId!!)
             } catch (e: Exception) {
                 Log.e("SyncRepository", "Failed to delete expense from Firestore", e)
+                synced = false
             }
         }
         db.expenseDao().deleteExpense(expense)
+        return synced
     }
 
     suspend fun deleteGroup(group: SplitGroup, isOwner: Boolean) {
@@ -156,7 +187,7 @@ class SyncRepository(
         db.groupDao().deleteGroup(group)
     }
 
-    suspend fun recordPayment(group: SplitGroup, payment: Payment) {
+    suspend fun recordPayment(group: SplitGroup, payment: Payment): Boolean {
         // 1. Insert into local Room DB immediately
         val localPaymentId = db.paymentDao().insertPayment(payment)
 
@@ -166,6 +197,12 @@ class SyncRepository(
                 val memberFsIdMap = members
                     .filter { it.firestoreId != null }
                     .associate { it.id to it.firestoreId!! }
+                // Both parties must already have a firestoreId; otherwise the write would
+                // carry an empty memberFsId and other clients would misattribute it.
+                if (memberFsIdMap[payment.fromMemberId] == null || memberFsIdMap[payment.toMemberId] == null) {
+                    Log.e("SyncRepository", "Aborting payment upload: missing firestoreId for a required member")
+                    return false
+                }
                 val fsPay = firestore.addPayment(group.firestoreId!!, payment, memberFsIdMap)
                 val current = db.paymentDao().getPaymentById(localPaymentId)
                 if (current != null && current.firestoreId == null) {
@@ -175,8 +212,45 @@ class SyncRepository(
                 }
             } catch (e: Exception) {
                 Log.e("SyncRepository", "Failed to upload payment to Firestore", e)
+                return false
             }
         }
+        return true
+    }
+
+    suspend fun updatePayment(group: SplitGroup, payment: Payment): Boolean {
+        db.paymentDao().updatePayment(payment)
+        if (group.firestoreId != null && payment.firestoreId != null) {
+            try {
+                val members = db.memberDao().getMembersByGroupOnce(group.id)
+                val memberFsIdMap = members
+                    .filter { it.firestoreId != null }
+                    .associate { it.id to it.firestoreId!! }
+                if (memberFsIdMap[payment.fromMemberId] == null || memberFsIdMap[payment.toMemberId] == null) {
+                    Log.e("SyncRepository", "Aborting payment update: missing firestoreId for a required member")
+                    return false
+                }
+                firestore.updatePayment(group.firestoreId!!, payment, memberFsIdMap)
+            } catch (e: Exception) {
+                Log.e("SyncRepository", "Failed to update payment in Firestore", e)
+                return false
+            }
+        }
+        return true
+    }
+
+    suspend fun deletePayment(group: SplitGroup, payment: Payment): Boolean {
+        var synced = true
+        if (group.firestoreId != null && payment.firestoreId != null) {
+            try {
+                firestore.deletePayment(group.firestoreId!!, payment.firestoreId!!)
+            } catch (e: Exception) {
+                Log.e("SyncRepository", "Failed to delete payment from Firestore", e)
+                synced = false
+            }
+        }
+        db.paymentDao().deletePayment(payment)
+        return synced
     }
 
     suspend fun syncLocalUnsyncedData(localGroupId: Long) {
@@ -208,8 +282,8 @@ class SyncRepository(
             for (m in members) {
                 if (m.firestoreId == null) {
                     val matchingRemote = remoteByName[m.name.trim().lowercase()]
-                    if (matchingRemote != null) {
-                        val fsId = matchingRemote["_fsId"] as String
+                    val fsId = matchingRemote?.get("_fsId") as? String
+                    if (fsId != null) {
                         val updated = m.copy(firestoreId = fsId)
                         db.memberDao().updateMember(updated)
                         memberFsIdMap[m.id] = fsId
@@ -238,6 +312,11 @@ class SyncRepository(
                 if (expense.firestoreId == null) {
                     try {
                         val splits = db.expenseDao().getSplitsForExpense(expense.id)
+                        val requiredMemberIds = splits.map { it.memberId } + expense.paidByMemberId
+                        if (requiredMemberIds.any { memberFsIdMap[it] == null }) {
+                            Log.w("SyncRepository", "Skipping expense ${expense.id} upload: missing member firestoreId")
+                            continue
+                        }
                         val fsExpId = firestore.addExpense(fsGroupId, expense, splits, memberFsIdMap)
                         db.expenseDao().updateExpense(
                             expense.copy(firestoreId = fsExpId, addedByUid = firestore.currentUid)
@@ -252,6 +331,10 @@ class SyncRepository(
             val payments = db.paymentDao().getPaymentsByGroupOnce(localGroupId)
             for (payment in payments) {
                 if (payment.firestoreId == null) {
+                    if (memberFsIdMap[payment.fromMemberId] == null || memberFsIdMap[payment.toMemberId] == null) {
+                        Log.w("SyncRepository", "Skipping payment ${payment.id} upload: missing member firestoreId")
+                        continue
+                    }
                     try {
                         val fsPayId = firestore.addPayment(fsGroupId, payment, memberFsIdMap)
                         db.paymentDao().updatePayment(
@@ -305,15 +388,17 @@ class SyncRepository(
         val membersInExpenses = groupExpenses.map { it.paidByMemberId }.toSet()
         val membersInPayments = groupPayments.flatMap { listOf(it.fromMemberId, it.toMemberId) }.toSet()
 
-        // 0. DEDUPLICATE FIRESTORE: If multiple remote docs share the same name, merge them in Firestore!
-        val remoteByName = remoteDocs.groupBy { (it["name"] as? String)?.trim()?.lowercase() }
+        // 0. DEDUPLICATE FIRESTORE: If multiple remote docs share the exact same non-null linkedUid,
+        // merge them in Firestore. Never deduplicate purely by name, which can merge distinct people
+        // who happen to share a name (e.g. two roommates named "Alex").
         val activeRemoteDocs = remoteDocs.toMutableList()
-        for ((name, docs) in remoteByName) {
-            if (name != null && docs.size > 1) {
-                val keepDoc = docs.firstOrNull { it["linkedUid"] != null } ?: docs.first()
-                val keepFsId = keepDoc["_fsId"] as String
+        val remoteByUid = remoteDocs.filter { it["linkedUid"] != null }.groupBy { it["linkedUid"] as String }
+        for ((_, docs) in remoteByUid) {
+            if (docs.size > 1) {
+                val keepDoc = docs.first()
+                val keepFsId = keepDoc["_fsId"] as? String ?: continue
                 for (dupDoc in docs) {
-                    val dupFsId = dupDoc["_fsId"] as String
+                    val dupFsId = dupDoc["_fsId"] as? String ?: continue
                     if (dupFsId != keepFsId) {
                         scope.launch {
                             firestore.mergeDuplicateMemberInFirestore(firestoreGroupId, keepFsId, dupFsId)
@@ -344,21 +429,19 @@ class SyncRepository(
             }
         }
 
-        // 2. DEDUPLICATE: If multiple local members have the exact same name, merge them!
+        // 2. DEDUPLICATE LOCAL: If multiple local members share the same non-null linkedUid,
+        // merge them. We never auto-merge local members based purely on name.
         val afterFsDups = db.memberDao().getMembersByGroupOnce(localGroupId)
-        val byNameLocalGroups = afterFsDups.groupBy { it.name.trim().lowercase() }
-        for ((_, nameDups) in byNameLocalGroups) {
-            if (nameDups.size > 1) {
-                val keep = nameDups.firstOrNull { it.firestoreId != null && it.linkedUid != null }
-                    ?: nameDups.firstOrNull { it.firestoreId != null }
-                    ?: nameDups.firstOrNull { it.id in membersInExpenses || it.id in membersInPayments }
-                    ?: nameDups.first()
-                for (dup in nameDups) {
+        val byUidLocalGroups = afterFsDups.filter { it.linkedUid != null }.groupBy { it.linkedUid!! }
+        for ((_, uidDups) in byUidLocalGroups) {
+            if (uidDups.size > 1) {
+                val keep = uidDups.firstOrNull { it.firestoreId != null } ?: uidDups.first()
+                for (dup in uidDups) {
                     if (dup.id != keep.id) {
                         try {
                             db.memberDao().mergeAndRemoveDuplicateMember(keep.id, dup.id, db.expenseDao())
                         } catch (e: Exception) {
-                            Log.e("SyncRepository", "Failed to merge local duplicate member ${dup.name}", e)
+                            Log.e("SyncRepository", "Failed to merge local duplicate member by uid ${dup.name}", e)
                         }
                     }
                 }
@@ -369,14 +452,25 @@ class SyncRepository(
         val localMembers = db.memberDao().getMembersByGroupOnce(localGroupId)
         val localByFsId = localMembers.filter { it.firestoreId != null }.associateBy { it.firestoreId!! }
         val unlinkedLocals = localMembers.filter { it.firestoreId == null }.toMutableList()
-        val remoteFsIds = activeRemoteDocs.map { it["_fsId"] as String }.toSet()
+        val remoteFsIds = activeRemoteDocs.mapNotNull { it["_fsId"] as? String }.toSet()
 
         for (doc in activeRemoteDocs) {
-            val fsId = doc["_fsId"] as String
+            val fsId = doc["_fsId"] as? String ?: continue
             val name = doc["name"] as? String ?: continue
             val ratio = (doc["defaultRatioPart"] as? Number)?.toInt() ?: 1
             val linkedUid = doc["linkedUid"] as? String
-            val isRemoved = (doc["isRemoved"] as? Boolean) ?: false
+            val rawIsRemoved = (doc["isRemoved"] as? Boolean) ?: false
+            val isRemoved = if (linkedUid != null) false else rawIsRemoved
+
+            if (linkedUid != null && rawIsRemoved) {
+                scope.launch {
+                    try {
+                        firestore.restoreMemberInGroup(firestoreGroupId, fsId)
+                    } catch (e: Exception) {
+                        Log.e("SyncRepository", "Failed to auto-heal remote member isRemoved status", e)
+                    }
+                }
+            }
 
             val existing = localByFsId[fsId]
             if (existing != null) {
@@ -474,12 +568,14 @@ class SyncRepository(
             localExpenses = db.expenseDao().getExpensesByGroupOnce(localGroupId)
         }
 
-        // 1b. Deduplicate identical local expenses (e.g. one with firestoreId and one without)
+        // 1b. Deduplicate identical local expenses (e.g. one with firestoreId and one without).
+        // These are rows for the SAME underlying write, so they share the exact createdAt -
+        // matching on exact timestamp (rather than a coarse time bucket) avoids treating two
+        // genuinely distinct expenses added moments apart as duplicates and deleting one.
         val seenSignatures = mutableMapOf<String, Expense>()
         val sigDuplicates = mutableListOf<Expense>()
         for (exp in localExpenses) {
-            val timeBucket = exp.createdAt / 120_000L // 2-minute bucket
-            val sig = "${exp.amount}_${exp.currency}_${exp.description}_${exp.paidByMemberId}_$timeBucket"
+            val sig = "${exp.amount}_${exp.currency}_${exp.description}_${exp.paidByMemberId}_${exp.createdAt}"
             val existing = seenSignatures[sig]
             if (existing != null) {
                 if (existing.firestoreId == null && exp.firestoreId != null) {
@@ -562,12 +658,15 @@ class SyncRepository(
                 continue
             }
 
-            // Check if there is an unsynced local expense that matches this remote expense
+            // Check if there is an unsynced local expense that matches this remote expense.
+            // createdAt is set once at creation and carried through to Firestore unchanged,
+            // so an exact match (rather than a fuzzy time window) reliably identifies the
+            // same underlying write without risking a match against a distinct expense.
             val matchingLocal = localUnsynced.firstOrNull { un ->
                 Math.abs(un.amount - amount) < 0.001 &&
                 un.currency == currency &&
                 un.description == description &&
-                Math.abs(un.createdAt - createdAt) < 120_000L
+                un.createdAt == createdAt
             }
 
             if (matchingLocal != null) {
@@ -643,12 +742,12 @@ class SyncRepository(
             localPayments = db.paymentDao().getPaymentsByGroupOnce(localGroupId)
         }
 
-        // Deduplicate identical local payments
+        // Deduplicate identical local payments (same reasoning as expenses above: match on
+        // exact createdAt, not a coarse time bucket, so distinct payments aren't conflated)
         val seenSignatures = mutableMapOf<String, Payment>()
         val sigDuplicates = mutableListOf<Payment>()
         for (pay in localPayments) {
-            val timeBucket = pay.createdAt / 120_000L
-            val sig = "${pay.amount}_${pay.currency}_${pay.fromMemberId}_${pay.toMemberId}_$timeBucket"
+            val sig = "${pay.amount}_${pay.currency}_${pay.fromMemberId}_${pay.toMemberId}_${pay.createdAt}"
             val existing = seenSignatures[sig]
             if (existing != null) {
                 if (existing.firestoreId == null && pay.firestoreId != null) {
@@ -694,7 +793,7 @@ class SyncRepository(
                 un.toMemberId == tMember.id &&
                 Math.abs(un.amount - amount) < 0.001 &&
                 un.currency == currency &&
-                Math.abs(un.createdAt - createdAt) < 120_000L
+                un.createdAt == createdAt
             }
 
             if (matchingLocal != null) {

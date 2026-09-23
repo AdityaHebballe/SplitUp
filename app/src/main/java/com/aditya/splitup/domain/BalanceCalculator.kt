@@ -26,6 +26,13 @@ data class Settlement(
 
 class BalanceCalculator {
 
+    companion object {
+        // Balances smaller than this (in group currency) are treated as settled.
+        // Shared with BalanceCard so the UI's "settled" display can't diverge
+        // from what calculateSettlements actually considers settled.
+        const val SETTLED_THRESHOLD = 0.01
+    }
+
     fun calculateMemberBalances(
         members: List<Member>,
         expenses: List<Expense>,
@@ -95,8 +102,8 @@ class BalanceCalculator {
         val balances = calculateMemberBalances(members, expenses, splits, payments, rates, groupCurrency)
         
         // Greedy min-cash-flow
-        val debtors = balances.filter { it.netBalance < -0.01 }.sortedBy { it.netBalance }.toMutableList() // Most negative first
-        val creditors = balances.filter { it.netBalance > 0.01 }.sortedByDescending { it.netBalance }.toMutableList() // Most positive first
+        val debtors = balances.filter { it.netBalance < -SETTLED_THRESHOLD }.sortedBy { it.netBalance }.toMutableList() // Most negative first
+        val creditors = balances.filter { it.netBalance > SETTLED_THRESHOLD }.sortedByDescending { it.netBalance }.toMutableList() // Most positive first
 
         val settlements = mutableListOf<Settlement>()
         
@@ -129,8 +136,8 @@ class BalanceCalculator {
             debtAmounts[i] -= settledAmount
             creditAmounts[j] -= settledAmount
             
-            if (debtAmounts[i] < 0.01) i++
-            if (creditAmounts[j] < 0.01) j++
+            if (debtAmounts[i] < SETTLED_THRESHOLD) i++
+            if (creditAmounts[j] < SETTLED_THRESHOLD) j++
         }
         
         return settlements

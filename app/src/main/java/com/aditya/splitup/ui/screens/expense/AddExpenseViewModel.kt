@@ -48,16 +48,17 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
         category: String?,
         paidByMemberId: Long,
         ratios: Map<Long, Int>,
-        onSuccess: () -> Unit
+        onSuccess: (synced: Boolean) -> Unit
     ) {
         val currentGroup = _group.value
         if (currentGroup == null) {
             Log.w("AddExpenseViewModel", "Cannot save expense: group is null")
-            onSuccess()
+            onSuccess(false)
             return
         }
         val uid = syncRepo.firestore.currentUid
         viewModelScope.launch {
+            var synced = true
             try {
                 val expense = Expense(
                     groupId = currentGroup.id,
@@ -75,11 +76,12 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
                         ratioPart = ratioPart
                     )
                 }
-                syncRepo.addExpense(currentGroup, expense, splits)
+                synced = syncRepo.addExpense(currentGroup, expense, splits)
             } catch (e: Exception) {
                 Log.e("AddExpenseViewModel", "Error saving expense", e)
+                synced = false
             } finally {
-                onSuccess()
+                onSuccess(synced)
             }
         }
     }
@@ -96,15 +98,16 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
         category: String?,
         paidByMemberId: Long,
         ratios: Map<Long, Int>,
-        onSuccess: () -> Unit
+        onSuccess: (synced: Boolean) -> Unit
     ) {
         val currentGroup = _group.value
         if (currentGroup == null) {
             Log.w("AddExpenseViewModel", "Cannot update expense: group is null")
-            onSuccess()
+            onSuccess(false)
             return
         }
         viewModelScope.launch {
+            var synced = true
             try {
                 val expense = Expense(
                     id = expenseId,
@@ -122,11 +125,12 @@ class AddExpenseViewModel(application: Application) : AndroidViewModel(applicati
                         ratioPart = ratioPart
                     )
                 }
-                syncRepo.updateExpense(currentGroup, expense, splits)
+                synced = syncRepo.updateExpense(currentGroup, expense, splits)
             } catch (e: Exception) {
                 Log.e("AddExpenseViewModel", "Error updating expense", e)
+                synced = false
             } finally {
-                onSuccess()
+                onSuccess(synced)
             }
         }
     }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aditya.splitup.data.model.Payment
 import com.aditya.splitup.ui.components.CurrencyPicker
 import com.aditya.splitup.ui.components.pressScale
 import com.aditya.splitup.ui.components.rememberPressInteractionSource
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettleUpSheet(
     viewModel: GroupViewModel,
+    paymentToEdit: Payment? = null,
     initialFromMemberId: Long? = null,
     initialToMemberId: Long? = null,
     initialAmount: Double? = null,
@@ -38,7 +41,13 @@ fun SettleUpSheet(
     onDismiss: () -> Unit
 ) {
     val group by viewModel.group.collectAsStateWithLifecycle()
-    val members by viewModel.members.collectAsStateWithLifecycle()
+    val allMembers by viewModel.members.collectAsStateWithLifecycle()
+    val activeMembers by viewModel.activeMembers.collectAsStateWithLifecycle()
+    // Selection (picker + submit validity) only ever offers active members, so a former
+    // member can't be picked as payer/recipient for a new settlement. When editing an
+    // existing payment that references a since-removed member, fall back to the full
+    // member list so their name still resolves correctly instead of showing blank.
+    val members = if (paymentToEdit != null) allMembers else activeMembers
 
     if (members.size < 2) {
         ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -49,23 +58,37 @@ fun SettleUpSheet(
         return
     }
 
-    val defaultFromId = initialFromMemberId?.takeIf { id -> members.any { it.id == id } } ?: members.first().id
-    val defaultToId = initialToMemberId?.takeIf { id -> members.any { it.id == id } }
+    val defaultFromId = paymentToEdit?.fromMemberId ?: initialFromMemberId?.takeIf { id -> members.any { it.id == id } } ?: members.first().id
+    val defaultToId = paymentToEdit?.toMemberId ?: initialToMemberId?.takeIf { id -> members.any { it.id == id } }
         ?: members.firstOrNull { it.id != defaultFromId }?.id ?: members.getOrNull(1)?.id ?: members.first().id
 
-    var fromMemberId by remember(initialFromMemberId) { mutableStateOf(defaultFromId) }
-    var toMemberId by remember(initialToMemberId) { mutableStateOf(defaultToId) }
-    var amount by remember(initialAmount) {
+    var fromMemberId by remember(paymentToEdit, initialFromMemberId) { mutableStateOf(defaultFromId) }
+    var toMemberId by remember(paymentToEdit, initialToMemberId) { mutableStateOf(defaultToId) }
+
+    // A member selected here can be removed on another device while this sheet is open
+    // (Firestore snapshot listener updates `members` live). Re-derive the selection so we
+    // never submit a payment referencing an id that no longer exists in the group.
+    LaunchedEffect(members) {
+        if (members.none { it.id == fromMemberId }) {
+            fromMemberId = members.firstOrNull()?.id ?: fromMemberId
+        }
+        if (members.none { it.id == toMemberId }) {
+            toMemberId = members.firstOrNull { it.id != fromMemberId }?.id ?: fromMemberId
+        }
+    }
+    val effectiveAmount = paymentToEdit?.amount ?: initialAmount
+    var amount by remember(paymentToEdit, initialAmount) {
         mutableStateOf(
-            if (initialAmount != null && initialAmount > 0.0) {
-                String.format(java.util.Locale.US, "%.2f", initialAmount)
+            if (effectiveAmount != null && effectiveAmount > 0.0) {
+                String.format(java.util.Locale.US, "%.2f", effectiveAmount)
             } else ""
         )
     }
-    var currency by remember(initialCurrency, group?.defaultCurrency) {
-        mutableStateOf(initialCurrency ?: group?.defaultCurrency ?: "USD")
+    var currency by remember(paymentToEdit, initialCurrency, group?.defaultCurrency) {
+        mutableStateOf(paymentToEdit?.currency ?: initialCurrency ?: group?.defaultCurrency ?: "USD")
     }
     var showCurrencyPicker by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     var fromDropdownExpanded by remember { mutableStateOf(false) }
     var toDropdownExpanded by remember { mutableStateOf(false) }
@@ -118,12 +141,12 @@ fun SettleUpSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "Record Settle-Up",
+                text = if (paymentToEdit != null) "Edit Settlement" else "Record Settle-Up",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Track money sent from one person to another to reduce owed balances.",
+                text = if (paymentToEdit != null) "Update or revert this settled payment." else "Track money sent from one person to another to reduce owed balances.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -321,19 +344,32 @@ fun SettleUpSheet(
                     val parsed = amount.toDoubleOrNull()
                     if (parsed != null && parsed > 0 && fromMemberId != toMemberId && !isSaving) {
                         isSaving = true
-                        viewModel.recordPayment(
-                            fromMemberId = fromMemberId,
-                            toMemberId = toMemberId,
-                            amount = parsed,
-                            currency = currency,
-                            onSuccess = safeDismiss
-                        )
+                        if (paymentToEdit != null) {
+                            viewModel.updatePayment(
+                                paymentToEdit.copy(
+                                    fromMemberId = fromMemberId,
+                                    toMemberId = toMemberId,
+                                    amount = parsed,
+                                    currency = currency
+                                ),
+                                onSuccess = safeDismiss
+                            )
+                        } else {
+                            viewModel.recordPayment(
+                                fromMemberId = fromMemberId,
+                                toMemberId = toMemberId,
+                                amount = parsed,
+                                currency = currency,
+                                onSuccess = safeDismiss
+                            )
+                        }
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                enabled = !isSaving && (amount.toDoubleOrNull() ?: 0.0) > 0.0 && fromMemberId != toMemberId
+                enabled = !isSaving && (amount.toDoubleOrNull() ?: 0.0) > 0.0 && fromMemberId != toMemberId &&
+                    members.any { it.id == fromMemberId } && members.any { it.id == toMemberId }
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(
@@ -342,15 +378,72 @@ fun SettleUpSheet(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Recording…", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (paymentToEdit != null) "Updating…" else "Recording…",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 } else {
                     Icon(Icons.Filled.Payments, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Record Settle Up", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (paymentToEdit != null) "Update Settlement" else "Record Settle Up",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            if (paymentToEdit != null) {
+                OutlinedButton(
+                    onClick = { showDeleteConfirmDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.DeleteOutline,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Revert Settlement", fontWeight = FontWeight.SemiBold)
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        if (showDeleteConfirmDialog && paymentToEdit != null) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                title = { Text("Revert Settlement?") },
+                text = {
+                    val fromName = members.find { it.id == paymentToEdit.fromMemberId }?.name ?: "Payer"
+                    val toName = members.find { it.id == paymentToEdit.toMemberId }?.name ?: "Receiver"
+                    Text("This will delete this settlement record and restore the balance between $fromName and $toName.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            viewModel.deletePayment(paymentToEdit)
+                            safeDismiss()
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Revert", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

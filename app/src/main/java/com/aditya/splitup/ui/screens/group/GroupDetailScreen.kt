@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aditya.splitup.data.model.Expense
+import com.aditya.splitup.data.model.Payment
 import com.aditya.splitup.ui.screens.expense.AddExpenseSheet
 import com.aditya.splitup.ui.screens.expense.AddExpenseViewModel
 import com.aditya.splitup.ui.screens.payment.SettleUpSheet
@@ -41,12 +42,21 @@ fun GroupDetailScreen(
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var showSettleUpSheet by remember { mutableStateOf(false) }
     var settlementToApply by remember { mutableStateOf<com.aditya.splitup.domain.Settlement?>(null) }
+    var paymentToEdit by remember { mutableStateOf<Payment?>(null) }
 
     val addExpenseViewModel: AddExpenseViewModel = viewModel()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(viewModel) {
+        viewModel.syncWarnings.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 
@@ -121,12 +131,20 @@ fun GroupDetailScreen(
                         onEditExpense = { expense ->
                             expenseToEdit = expense
                             showAddExpenseSheet = true
-                        }
+                        },
+                        onEditPayment = { payment ->
+                            paymentToEdit = payment
+                        },
+                        isTabActive = (pagerState.currentPage == 0)
                     )
                     1 -> BalancesTab(
                         viewModel = viewModel,
                         onNavigateToSettleUp = { showSettleUpSheet = true },
-                        onApplySettlement = { settlement -> settlementToApply = settlement }
+                        onApplySettlement = { settlement -> settlementToApply = settlement },
+                        onEditPayment = { payment ->
+                            paymentToEdit = payment
+                        },
+                        isTabActive = (pagerState.currentPage == 1)
                     )
                     2 -> BreakdownTab(
                         viewModel = viewModel,
@@ -148,20 +166,27 @@ fun GroupDetailScreen(
                 showAddExpenseSheet = false
                 expenseToEdit = null
             },
+            onExpenseSaved = { synced ->
+                if (!synced) {
+                    viewModel.postSyncWarning("Saved locally — couldn't sync to the cloud, will retry later")
+                }
+            },
             viewModel = addExpenseViewModel
         )
     }
 
-    if ((showSettleUpSheet || settlementToApply != null) && group != null) {
+    if ((showSettleUpSheet || settlementToApply != null || paymentToEdit != null) && group != null) {
         SettleUpSheet(
             viewModel = viewModel,
-            initialFromMemberId = settlementToApply?.fromMemberId,
-            initialToMemberId = settlementToApply?.toMemberId,
-            initialAmount = settlementToApply?.amount,
-            initialCurrency = settlementToApply?.currency,
+            paymentToEdit = paymentToEdit,
+            initialFromMemberId = paymentToEdit?.fromMemberId ?: settlementToApply?.fromMemberId,
+            initialToMemberId = paymentToEdit?.toMemberId ?: settlementToApply?.toMemberId,
+            initialAmount = paymentToEdit?.amount ?: settlementToApply?.amount,
+            initialCurrency = paymentToEdit?.currency ?: settlementToApply?.currency,
             onDismiss = {
                 showSettleUpSheet = false
                 settlementToApply = null
+                paymentToEdit = null
             }
         )
     }

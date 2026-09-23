@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aditya.splitup.domain.BalanceCalculator
 import com.aditya.splitup.domain.CurrencyUtils
 import com.aditya.splitup.ui.theme.AmountStyle
 import com.aditya.splitup.ui.theme.HeroCardShape
@@ -29,11 +30,12 @@ fun BalanceCard(
     netBalance: Double,
     currencyCode: String,
     isCurrentUser: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cycle: Int = 0
 ) {
     val balanceColors = LocalBalanceColors.current
-    val isPositive = netBalance > 0.009
-    val isNegative = netBalance < -0.009
+    val isPositive = netBalance > BalanceCalculator.SETTLED_THRESHOLD
+    val isNegative = netBalance < -BalanceCalculator.SETTLED_THRESHOLD
     val isSettled = !isPositive && !isNegative
 
     val statusColor = when {
@@ -138,11 +140,14 @@ fun BalanceCard(
                     isNegative -> "-"
                     else -> ""
                 }
-                Text(
-                    text = "$amountPrefix${CurrencyUtils.formatAmount(abs(netBalance), currencyCode)}",
+                AnimatedAmount(
+                    amount = abs(netBalance),
+                    currencyCode = currencyCode,
+                    prefix = amountPrefix,
                     style = AmountStyle,
                     color = statusColor,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    cycle = cycle
                 )
 
                 Surface(

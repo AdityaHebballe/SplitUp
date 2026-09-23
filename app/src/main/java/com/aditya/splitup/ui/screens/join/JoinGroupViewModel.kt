@@ -141,6 +141,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     val name = doc["name"] as? String ?: continue
                     val ratio = (doc["defaultRatioPart"] as? Number)?.toInt() ?: 1
                     val linkedUid = if (fsId == memberFsId) uid else doc["linkedUid"] as? String
+                    val remoteIsRemoved = (doc["isRemoved"] as? Boolean) ?: false
+                    val isRemoved = if (fsId == memberFsId || linkedUid != null) false else remoteIsRemoved
 
                     val existingMem = db.memberDao().getMemberByFirestoreId(fsId)
                     if (existingMem == null) {
@@ -152,7 +154,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                                     firestoreId = fsId,
                                     name = name,
                                     defaultRatioPart = ratio,
-                                    linkedUid = linkedUid
+                                    linkedUid = linkedUid,
+                                    isRemoved = isRemoved
                                 )
                             )
                         } else {
@@ -162,7 +165,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                                     firestoreId = fsId,
                                     name = name,
                                     defaultRatioPart = ratio,
-                                    linkedUid = linkedUid
+                                    linkedUid = linkedUid,
+                                    isRemoved = isRemoved
                                 )
                             )
                         }
@@ -171,7 +175,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                             existingMem.copy(
                                 name = name,
                                 defaultRatioPart = ratio,
-                                linkedUid = linkedUid
+                                linkedUid = linkedUid,
+                                isRemoved = isRemoved
                             )
                         )
                     }
@@ -241,15 +246,31 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     isUnlinked && (isPrevious || nameMatches)
                 }
 
-                val targetFsMemberId: String
+                // Claim decisions are re-verified inside a Firestore transaction (see
+                // claimMemberTransactional) so two concurrent joins racing on the same
+                // candidate doc can't both succeed — one wins the claim, the other falls
+                // through to creating a brand-new member instead of clobbering the winner.
+                var targetFsMemberId: String? = null
                 if (alreadyLinked != null) {
-                    targetFsMemberId = alreadyLinked["_fsId"] as String
+                    val candidateFsId = alreadyLinked["_fsId"] as? String ?: run {
+                        _state.value = JoinState.Error("Failed to join group. Please try again.")
+                        return@launch
+                    }
                     syncRepo.firestore.addUserToGroup(invite.groupFirestoreId, uid)
-                    syncRepo.firestore.reclaimMember(invite.groupFirestoreId, targetFsMemberId, uid)
+                    if (syncRepo.firestore.claimMemberTransactional(invite.groupFirestoreId, candidateFsId, uid)) {
+                        targetFsMemberId = candidateFsId
+                    }
                 } else if (matchedUnlinked != null) {
-                    targetFsMemberId = matchedUnlinked["_fsId"] as String
-                    syncRepo.firestore.claimUnlinkedMember(invite.groupFirestoreId, targetFsMemberId, uid, memberName)
-                } else {
+                    val candidateFsId = matchedUnlinked["_fsId"] as? String ?: run {
+                        _state.value = JoinState.Error("Failed to join group. Please try again.")
+                        return@launch
+                    }
+                    syncRepo.firestore.addUserToGroup(invite.groupFirestoreId, uid)
+                    if (syncRepo.firestore.claimMemberTransactional(invite.groupFirestoreId, candidateFsId, uid, memberName)) {
+                        targetFsMemberId = candidateFsId
+                    }
+                }
+                if (targetFsMemberId == null) {
                     syncRepo.firestore.addUserToGroup(invite.groupFirestoreId, uid)
                     targetFsMemberId = syncRepo.firestore.addMember(
                         invite.groupFirestoreId,
@@ -257,6 +278,7 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                         linkedUid = uid
                     )
                 }
+                val resolvedTargetFsMemberId: String = targetFsMemberId
 
                 // 4. Pre-populate all remote members into Room DB before starting sync
                 val updatedRemoteMembers = try {
@@ -269,7 +291,10 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     val fsId = doc["_fsId"] as? String ?: continue
                     val name = doc["name"] as? String ?: continue
                     val ratio = (doc["defaultRatioPart"] as? Number)?.toInt() ?: 1
-                    val linkedUid = if (fsId == targetFsMemberId) uid else doc["linkedUid"] as? String
+                    val linkedUid = if (fsId == resolvedTargetFsMemberId) uid else doc["linkedUid"] as? String
+                    val remoteIsRemoved = (doc["isRemoved"] as? Boolean) ?: false
+                    val isRemoved = if (fsId == resolvedTargetFsMemberId || linkedUid != null) false else remoteIsRemoved
+
                     val existingMem = db.memberDao().getMemberByFirestoreId(fsId)
                     if (existingMem == null) {
                         val existingByName = db.memberDao().getMembersByGroupOnce(localGroupId)
@@ -280,7 +305,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                                     firestoreId = fsId,
                                     name = name,
                                     defaultRatioPart = ratio,
-                                    linkedUid = linkedUid
+                                    linkedUid = linkedUid,
+                                    isRemoved = isRemoved
                                 )
                             )
                         } else {
@@ -290,7 +316,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                                     firestoreId = fsId,
                                     name = name,
                                     defaultRatioPart = ratio,
-                                    linkedUid = linkedUid
+                                    linkedUid = linkedUid,
+                                    isRemoved = isRemoved
                                 )
                             )
                         }
@@ -299,36 +326,39 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                             existingMem.copy(
                                 name = name,
                                 defaultRatioPart = ratio,
-                                linkedUid = linkedUid
+                                linkedUid = linkedUid,
+                                isRemoved = isRemoved
                             )
                         )
                     }
                 }
 
-                val currentLocalTarget = db.memberDao().getMemberByFirestoreId(targetFsMemberId)
+                val currentLocalTarget = db.memberDao().getMemberByFirestoreId(resolvedTargetFsMemberId)
                 if (currentLocalTarget == null) {
                     val targetByName = db.memberDao().getMembersByGroupOnce(localGroupId)
                         .firstOrNull { it.name.trim().equals(memberName.trim(), ignoreCase = true) }
                     if (targetByName != null) {
                         db.memberDao().updateMember(
                             targetByName.copy(
-                                firestoreId = targetFsMemberId,
-                                linkedUid = uid
+                                firestoreId = resolvedTargetFsMemberId,
+                                linkedUid = uid,
+                                isRemoved = false
                             )
                         )
                     } else {
                         db.memberDao().insertMember(
                             Member(
                                 groupId = localGroupId,
-                                firestoreId = targetFsMemberId,
+                                firestoreId = resolvedTargetFsMemberId,
                                 name = memberName,
-                                linkedUid = uid
+                                linkedUid = uid,
+                                isRemoved = false
                             )
                         )
                     }
                 } else {
                     db.memberDao().updateMember(
-                        currentLocalTarget.copy(name = memberName, linkedUid = uid)
+                        currentLocalTarget.copy(name = memberName, linkedUid = uid, isRemoved = false)
                     )
                 }
 
