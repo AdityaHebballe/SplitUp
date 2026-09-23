@@ -40,6 +40,7 @@ fun GroupDetailScreen(
     var showAddExpenseSheet by remember { mutableStateOf(false) }
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var showSettleUpSheet by remember { mutableStateOf(false) }
+    var settlementToApply by remember { mutableStateOf<com.aditya.splitup.domain.Settlement?>(null) }
 
     val addExpenseViewModel: AddExpenseViewModel = viewModel()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -124,7 +125,8 @@ fun GroupDetailScreen(
                     )
                     1 -> BalancesTab(
                         viewModel = viewModel,
-                        onNavigateToSettleUp = { showSettleUpSheet = true }
+                        onNavigateToSettleUp = { showSettleUpSheet = true },
+                        onApplySettlement = { settlement -> settlementToApply = settlement }
                     )
                     2 -> BreakdownTab(
                         viewModel = viewModel,
@@ -150,10 +152,17 @@ fun GroupDetailScreen(
         )
     }
 
-    if (showSettleUpSheet && group != null) {
+    if ((showSettleUpSheet || settlementToApply != null) && group != null) {
         SettleUpSheet(
             viewModel = viewModel,
-            onDismiss = { showSettleUpSheet = false }
+            initialFromMemberId = settlementToApply?.fromMemberId,
+            initialToMemberId = settlementToApply?.toMemberId,
+            initialAmount = settlementToApply?.amount,
+            initialCurrency = settlementToApply?.currency,
+            onDismiss = {
+                showSettleUpSheet = false
+                settlementToApply = null
+            }
         )
     }
 }

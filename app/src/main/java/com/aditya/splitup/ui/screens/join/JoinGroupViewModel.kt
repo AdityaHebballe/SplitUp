@@ -205,7 +205,8 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     emptyList()
                 }
 
-                val matchedUnlinked = remoteMembers.firstOrNull { doc ->
+                val alreadyLinked = remoteMembers.firstOrNull { it["linkedUid"] == uid }
+                val matchedUnlinked = if (alreadyLinked != null) null else remoteMembers.firstOrNull { doc ->
                     val mName = doc["name"] as? String ?: ""
                     val isUnlinked = doc["linkedUid"] == null
                     val isPrevious = doc["previousUid"] == uid
@@ -214,7 +215,11 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                 }
 
                 val targetFsMemberId: String
-                if (matchedUnlinked != null) {
+                if (alreadyLinked != null) {
+                    targetFsMemberId = alreadyLinked["_fsId"] as String
+                    syncRepo.firestore.addUserToGroup(invite.groupFirestoreId, uid)
+                    syncRepo.firestore.reclaimMember(invite.groupFirestoreId, targetFsMemberId, uid)
+                } else if (matchedUnlinked != null) {
                     targetFsMemberId = matchedUnlinked["_fsId"] as String
                     syncRepo.firestore.claimUnlinkedMember(invite.groupFirestoreId, targetFsMemberId, uid, memberName)
                 } else {

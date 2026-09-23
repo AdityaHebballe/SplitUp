@@ -101,32 +101,71 @@ class GroupSettingsViewModel(application: Application) : AndroidViewModel(applic
 
     fun addMember(name: String) {
         val currentGroup = _group.value ?: return
-        if (name.isBlank()) return
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
         viewModelScope.launch {
+            val existingLocal = db.memberDao().getMembersByGroupOnce(currentGroup.id)
+            if (existingLocal.any { it.name.trim().equals(trimmed, ignoreCase = true) }) {
+                Log.d("GroupSettingsVM", "Member with name $trimmed already exists")
+                return@launch
+            }
+
             var fsId: String? = null
             if (currentGroup.firestoreId != null) {
                 try {
                     fsId = syncRepo.firestore.addMember(
                         currentGroup.firestoreId,
-                        Member(groupId = currentGroup.id, name = name)
+                        Member(groupId = currentGroup.id, name = trimmed)
                     )
                 } catch (e: Exception) {
                     Log.e("GroupSettingsVM", "Failed to add member to Firestore", e)
                 }
             }
-            repository.insertMember(
-                Member(
-                    groupId = currentGroup.id,
-                    firestoreId = fsId,
-                    name = name
+
+            // If reconcileMembers already inserted via Firestore snapshot, do not re-insert
+            if (fsId != null) {
+                val alreadyInserted = db.memberDao().getMemberByFirestoreId(fsId)
+                if (alreadyInserted == null) {
+                    repository.insertMember(
+                        Member(
+                            groupId = currentGroup.id,
+                            firestoreId = fsId,
+                            name = trimmed
+                        )
+                    )
+                }
+            } else {
+                repository.insertMember(
+                    Member(
+                        groupId = currentGroup.id,
+                        name = trimmed
+                    )
                 )
-            )
+            }
         }
     }
 
     fun removeMember(member: Member) {
         val currentGroup = _group.value ?: return
         viewModelScope.launch {
+            val allMembers = db.memberDao().getMembersByGroupOnce(currentGroup.id)
+
+            // If there are duplicate local records for the exact same firestoreId, only delete this local record!
+            val duplicatesByFsId = if (member.firestoreId != null) {
+                allMembers.filter { it.firestoreId == member.firestoreId }
+            } else emptyList()
+
+            if (duplicatesByFsId.size > 1) {
+                db.memberDao().deleteMember(member)
+                return@launch
+            }
+
+            // If there's an unlinked local duplicate matching an already-synced member, delete only this local row
+            if (member.firestoreId == null && allMembers.any { it.name.trim().equals(member.name.trim(), ignoreCase = true) && it.id != member.id }) {
+                db.memberDao().deleteMember(member)
+                return@launch
+            }
+
             val hasExpenses = db.expenseDao().getExpensesByGroupOnce(currentGroup.id).any { it.paidByMemberId == member.id }
             val hasPayments = db.paymentDao().getPaymentsByGroupOnce(currentGroup.id).any { it.fromMemberId == member.id || it.toMemberId == member.id }
             val isReferenced = hasExpenses || hasPayments

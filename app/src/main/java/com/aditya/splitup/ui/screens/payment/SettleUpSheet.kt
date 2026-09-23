@@ -31,6 +31,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettleUpSheet(
     viewModel: GroupViewModel,
+    initialFromMemberId: Long? = null,
+    initialToMemberId: Long? = null,
+    initialAmount: Double? = null,
+    initialCurrency: String? = null,
     onDismiss: () -> Unit
 ) {
     val group by viewModel.group.collectAsStateWithLifecycle()
@@ -45,10 +49,22 @@ fun SettleUpSheet(
         return
     }
 
-    var fromMemberId by remember { mutableStateOf(members.first().id) }
-    var toMemberId by remember { mutableStateOf(members[1].id) }
-    var amount by remember { mutableStateOf("") }
-    var currency by remember { mutableStateOf(group?.defaultCurrency ?: "USD") }
+    val defaultFromId = initialFromMemberId?.takeIf { id -> members.any { it.id == id } } ?: members.first().id
+    val defaultToId = initialToMemberId?.takeIf { id -> members.any { it.id == id } }
+        ?: members.firstOrNull { it.id != defaultFromId }?.id ?: members.getOrNull(1)?.id ?: members.first().id
+
+    var fromMemberId by remember(initialFromMemberId) { mutableStateOf(defaultFromId) }
+    var toMemberId by remember(initialToMemberId) { mutableStateOf(defaultToId) }
+    var amount by remember(initialAmount) {
+        mutableStateOf(
+            if (initialAmount != null && initialAmount > 0.0) {
+                String.format(java.util.Locale.US, "%.2f", initialAmount)
+            } else ""
+        )
+    }
+    var currency by remember(initialCurrency, group?.defaultCurrency) {
+        mutableStateOf(initialCurrency ?: group?.defaultCurrency ?: "USD")
+    }
     var showCurrencyPicker by remember { mutableStateOf(false) }
 
     var fromDropdownExpanded by remember { mutableStateOf(false) }

@@ -28,6 +28,8 @@ class GroupViewModel(application: Application, val groupId: Long) : AndroidViewM
     private val calculator = BalanceCalculator()
     private val syncRepo: SyncRepository = (application as SplitTrackerApp).syncRepository
 
+    val currentUid: String? get() = syncRepo.firestore.currentUid
+
     val group: StateFlow<SplitGroup?> = groupDao.getGroupById(groupId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 

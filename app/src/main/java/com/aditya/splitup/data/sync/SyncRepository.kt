@@ -185,9 +185,20 @@ class SyncRepository(
 
         try {
             // 1. Ensure Firestore has current group settings (name, defaultCurrency)
-            firestore.updateGroup(group)
+            try {
+                firestore.updateGroup(group)
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Non-fatal: could not update group settings in Firestore", e)
+            }
 
-            // 2. Ensure all local members are uploaded
+            // 2. Ensure all local members are mapped/uploaded
+            val remoteMembers = try {
+                firestore.getGroupMembers(fsGroupId)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val remoteByName = remoteMembers.associateBy { (it["name"] as? String)?.trim()?.lowercase() }
+
             val members = db.memberDao().getMembersByGroupOnce(localGroupId)
             val memberFsIdMap = members
                 .filter { it.firestoreId != null }
@@ -196,13 +207,21 @@ class SyncRepository(
 
             for (m in members) {
                 if (m.firestoreId == null) {
-                    try {
-                        val fsId = firestore.addMember(fsGroupId, m, m.linkedUid)
+                    val matchingRemote = remoteByName[m.name.trim().lowercase()]
+                    if (matchingRemote != null) {
+                        val fsId = matchingRemote["_fsId"] as String
                         val updated = m.copy(firestoreId = fsId)
                         db.memberDao().updateMember(updated)
                         memberFsIdMap[m.id] = fsId
-                    } catch (e: Exception) {
-                        Log.e("SyncRepository", "Failed to upload member ${m.name}", e)
+                    } else {
+                        try {
+                            val fsId = firestore.addMember(fsGroupId, m, m.linkedUid)
+                            val updated = m.copy(firestoreId = fsId)
+                            db.memberDao().updateMember(updated)
+                            memberFsIdMap[m.id] = fsId
+                        } catch (e: Exception) {
+                            Log.e("SyncRepository", "Failed to upload member ${m.name}", e)
+                        }
                     }
                 } else {
                     try {
@@ -281,8 +300,32 @@ class SyncRepository(
         firestoreGroupId: String,
         remoteDocs: List<Map<String, Any?>>
     ) {
+        val groupExpenses = db.expenseDao().getExpensesByGroupOnce(localGroupId)
+        val groupPayments = db.paymentDao().getPaymentsByGroupOnce(localGroupId)
+        val membersInExpenses = groupExpenses.map { it.paidByMemberId }.toSet()
+        val membersInPayments = groupPayments.flatMap { listOf(it.fromMemberId, it.toMemberId) }.toSet()
+
+        // 1. DEDUPLICATE: If multiple local members have the exact same firestoreId, keep one and delete duplicates
+        val rawLocalMembers = db.memberDao().getMembersByGroupOnce(localGroupId)
+        val byFsIdGroups = rawLocalMembers.filter { it.firestoreId != null }.groupBy { it.firestoreId!! }
+        for ((_, duplicates) in byFsIdGroups) {
+            if (duplicates.size > 1) {
+                val keep = duplicates.firstOrNull { it.id in membersInExpenses || it.id in membersInPayments }
+                    ?: duplicates.minByOrNull { it.id } ?: duplicates.first()
+                for (dup in duplicates) {
+                    if (dup.id != keep.id) {
+                        try {
+                            db.memberDao().deleteMember(dup)
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+
+        // Re-fetch clean local members after deduplication
         val localMembers = db.memberDao().getMembersByGroupOnce(localGroupId)
-        val localByFsId = localMembers.associateBy { it.firestoreId }
+        val localByFsId = localMembers.filter { it.firestoreId != null }.associateBy { it.firestoreId!! }
+        val unlinkedLocals = localMembers.filter { it.firestoreId == null }.toMutableList()
         val remoteFsIds = remoteDocs.map { it["_fsId"] as String }.toSet()
 
         for (doc in remoteDocs) {
@@ -292,30 +335,46 @@ class SyncRepository(
             val linkedUid = doc["linkedUid"] as? String
 
             val existing = localByFsId[fsId]
-            if (existing == null) {
-                db.memberDao().insertMember(
-                    Member(
-                        groupId = localGroupId,
-                        firestoreId = fsId,
-                        name = name,
-                        defaultRatioPart = ratio,
-                        linkedUid = linkedUid
+            if (existing != null) {
+                if (existing.name != name || existing.defaultRatioPart != ratio || existing.linkedUid != linkedUid) {
+                    db.memberDao().updateMember(
+                        existing.copy(name = name, defaultRatioPart = ratio, linkedUid = linkedUid)
                     )
-                )
-            } else if (existing.name != name || existing.defaultRatioPart != ratio || existing.linkedUid != linkedUid) {
-                db.memberDao().updateMember(
-                    existing.copy(name = name, defaultRatioPart = ratio, linkedUid = linkedUid)
-                )
+                }
+            } else {
+                // Check if an unlinked local member (firestoreId == null) matches this name
+                val matchingUnlinked = unlinkedLocals.firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+                if (matchingUnlinked != null) {
+                    db.memberDao().updateMember(
+                        matchingUnlinked.copy(
+                            firestoreId = fsId,
+                            name = name,
+                            defaultRatioPart = ratio,
+                            linkedUid = linkedUid
+                        )
+                    )
+                    unlinkedLocals.remove(matchingUnlinked)
+                } else {
+                    // Double check to ensure no concurrent insertion occurred
+                    val doubleCheck = db.memberDao().getMemberByFirestoreId(fsId)
+                    if (doubleCheck == null) {
+                        db.memberDao().insertMember(
+                            Member(
+                                groupId = localGroupId,
+                                firestoreId = fsId,
+                                name = name,
+                                defaultRatioPart = ratio,
+                                linkedUid = linkedUid
+                            )
+                        )
+                    }
+                }
             }
         }
 
         // Delete locals no longer in remote (safely unlinking if referenced in expenses or payments)
-        val groupExpenses = db.expenseDao().getExpensesByGroupOnce(localGroupId)
-        val groupPayments = db.paymentDao().getPaymentsByGroupOnce(localGroupId)
-        val membersInExpenses = groupExpenses.map { it.paidByMemberId }.toSet()
-        val membersInPayments = groupPayments.flatMap { listOf(it.fromMemberId, it.toMemberId) }.toSet()
-
-        for (member in localMembers.filter { it.firestoreId != null && it.firestoreId !in remoteFsIds }) {
+        val refreshedLocals = db.memberDao().getMembersByGroupOnce(localGroupId)
+        for (member in refreshedLocals.filter { it.firestoreId != null && it.firestoreId !in remoteFsIds }) {
             val isUsed = member.id in membersInExpenses || member.id in membersInPayments
             if (isUsed) {
                 db.memberDao().updateMember(member.copy(linkedUid = null))
