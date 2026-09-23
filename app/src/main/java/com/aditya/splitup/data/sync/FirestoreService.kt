@@ -112,7 +112,8 @@ class FirestoreService {
             mapOf(
                 "name" to name,
                 "linkedUid" to uid,
-                "previousUid" to null
+                "previousUid" to null,
+                "isRemoved" to false
             )
         ).await()
         addUserToGroup(groupId, uid)

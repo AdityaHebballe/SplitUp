@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -130,6 +131,7 @@ fun JoinGroupScreen(
                     EnterNameStep(
                         groupName = currentState.invite.groupName,
                         memberCount = currentState.memberCount,
+                        claimableMembers = currentState.claimableMembers,
                         onJoin = { name ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.joinGroup(name, onGroupJoined)
@@ -370,9 +372,11 @@ private fun EnterCodeStep(
 private fun EnterNameStep(
     groupName: String,
     memberCount: Int,
+    claimableMembers: List<String> = emptyList(),
     onJoin: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -411,7 +415,7 @@ private fun EnterNameStep(
             textAlign = TextAlign.Center
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(28.dp))
 
         Text(
             "What's your name?",
@@ -419,13 +423,13 @@ private fun EnterNameStep(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
-            "You'll be added as a new member in this group.",
+            "Enter your name to join, or tap a previous member profile below if you were in this group before.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
             value = name,
@@ -444,6 +448,49 @@ private fun EnterNameStep(
             modifier = Modifier.fillMaxWidth()
         )
 
+        // Show claimable members chips or matching suggestion
+        if (claimableMembers.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            val matching = if (name.isNotBlank()) {
+                claimableMembers.filter { it.contains(name.trim(), ignoreCase = true) }
+            } else claimableMembers
+
+            if (matching.isNotEmpty()) {
+                Text(
+                    if (name.isBlank()) "Were you previously in this group?" else "Claim previous profile:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    matching.forEach { claimable ->
+                        val isSelected = name.trim().equals(claimable, ignoreCase = true)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                name = claimable
+                            },
+                            label = { Text(claimable) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Outlined.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.weight(1f))
 
         Button(
@@ -451,7 +498,11 @@ private fun EnterNameStep(
             enabled = name.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Join as \"${name.ifBlank { "..." }}\"")
+            val isClaiming = claimableMembers.any { it.equals(name.trim(), ignoreCase = true) }
+            Text(
+                if (isClaiming) "Rejoin as \"${name.trim()}\""
+                else "Join as \"${name.ifBlank { "..." }}\""
+            )
         }
     }
 }

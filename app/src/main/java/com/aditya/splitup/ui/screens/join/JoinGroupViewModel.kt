@@ -18,7 +18,11 @@ import kotlinx.coroutines.launch
 sealed class JoinState {
     object EnterCode : JoinState()
     object Loading : JoinState()
-    data class Preview(val invite: InviteInfo, val memberCount: Int) : JoinState()
+    data class Preview(
+        val invite: InviteInfo,
+        val memberCount: Int,
+        val claimableMembers: List<String> = emptyList()
+    ) : JoinState()
     data class Rejoin(val invite: InviteInfo, val memberFsId: String, val memberName: String) : JoinState()
     data class AlreadyMember(val localGroupId: Long, val groupName: String) : JoinState()
     data class Error(val message: String) : JoinState()
@@ -70,7 +74,17 @@ class JoinGroupViewModel(application: Application) : AndroidViewModel(applicatio
                         _state.value = JoinState.AlreadyMember(existingGroup.id, invite.groupName)
                     } else {
                         pendingInvite = invite
-                        _state.value = JoinState.Preview(invite, remoteMembers.size)
+                        val claimable = remoteMembers
+                            .filter { it["linkedUid"] == null }
+                            .mapNotNull { it["name"] as? String }
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                        _state.value = JoinState.Preview(
+                            invite = invite,
+                            memberCount = remoteMembers.size,
+                            claimableMembers = claimable
+                        )
                     }
                 } else {
                     _state.value = JoinState.Error("Invalid or expired code. Check the code and try again.")
