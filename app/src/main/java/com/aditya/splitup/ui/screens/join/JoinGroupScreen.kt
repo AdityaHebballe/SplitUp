@@ -1,5 +1,6 @@
 package com.aditya.splitup.ui.screens.join
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -42,6 +43,11 @@ fun JoinGroupScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
+
+    val canStepBack = state is JoinState.Preview || state is JoinState.AlreadyMember || state is JoinState.Rejoin
+    BackHandler(enabled = canStepBack) {
+        viewModel.resetToEnterCode()
+    }
 
     LaunchedEffect(initialCode) {
         if (!initialCode.isNullOrBlank()) {

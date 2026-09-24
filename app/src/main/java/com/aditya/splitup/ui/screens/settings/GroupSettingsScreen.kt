@@ -450,10 +450,15 @@ fun GroupSettingsScreen(
         }
     }
 
+    var isActionInProgress by remember { mutableStateOf(false) }
     if (showDeleteDialog) {
         val isOwner = viewModel.isOwner
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
+            onDismissRequest = { 
+                if (!isActionInProgress) {
+                    showDeleteDialog = false 
+                }
+            },
             icon = {
                 Icon(
                     imageVector = if (isOwner) Icons.Outlined.DeleteOutline else Icons.AutoMirrored.Outlined.ExitToApp,
@@ -473,9 +478,13 @@ fun GroupSettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteGroup(onSuccess = onGroupDeleted)
-                        showDeleteDialog = false
+                        if (!isActionInProgress) {
+                            isActionInProgress = true
+                            showDeleteDialog = false
+                            viewModel.deleteGroup(onSuccess = onGroupDeleted)
+                        }
                     },
+                    enabled = !isActionInProgress,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
@@ -485,7 +494,10 @@ fun GroupSettingsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(
+                    onClick = { showDeleteDialog = false },
+                    enabled = !isActionInProgress
+                ) {
                     Text("Cancel")
                 }
             }
@@ -494,7 +506,11 @@ fun GroupSettingsScreen(
 
     if (showSelfLeaveDialog) {
         AlertDialog(
-            onDismissRequest = { showSelfLeaveDialog = false },
+            onDismissRequest = { 
+                if (!isActionInProgress) {
+                    showSelfLeaveDialog = false 
+                }
+            },
             icon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
@@ -509,9 +525,13 @@ fun GroupSettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        showSelfLeaveDialog = false
-                        viewModel.leaveGroup(onSuccess = onGroupDeleted)
+                        if (!isActionInProgress) {
+                            isActionInProgress = true
+                            showSelfLeaveDialog = false
+                            viewModel.leaveGroup(onSuccess = onGroupDeleted)
+                        }
                     },
+                    enabled = !isActionInProgress,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
@@ -521,7 +541,10 @@ fun GroupSettingsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSelfLeaveDialog = false }) {
+                TextButton(
+                    onClick = { showSelfLeaveDialog = false },
+                    enabled = !isActionInProgress
+                ) {
                     Text("Cancel")
                 }
             }

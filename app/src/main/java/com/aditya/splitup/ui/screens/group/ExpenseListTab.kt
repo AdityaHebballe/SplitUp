@@ -519,9 +519,14 @@ fun ExpenseListTab(
         }
     }
 
+    var isDeletingExpense by remember { mutableStateOf(false) }
     if (expenseToDelete != null) {
         AlertDialog(
-            onDismissRequest = { expenseToDelete = null },
+            onDismissRequest = { 
+                if (!isDeletingExpense) {
+                    expenseToDelete = null 
+                }
+            },
             shape = HeroCardShape,
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             icon = {
@@ -557,9 +562,14 @@ fun ExpenseListTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        expenseToDelete?.let { viewModel.deleteExpense(it) }
-                        expenseToDelete = null
+                        if (!isDeletingExpense) {
+                            isDeletingExpense = true
+                            expenseToDelete?.let { viewModel.deleteExpense(it) }
+                            expenseToDelete = null
+                            isDeletingExpense = false
+                        }
                     },
+                    enabled = !isDeletingExpense,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
@@ -572,6 +582,7 @@ fun ExpenseListTab(
             dismissButton = {
                 TextButton(
                     onClick = { expenseToDelete = null },
+                    enabled = !isDeletingExpense,
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Cancel")
@@ -580,12 +591,17 @@ fun ExpenseListTab(
         )
     }
 
+    var isDeletingPayment by remember { mutableStateOf(false) }
     if (paymentToDelete != null) {
         val payment = paymentToDelete!!
         val fromName = memberMap[payment.fromMemberId]?.name ?: "Payer"
         val toName = memberMap[payment.toMemberId]?.name ?: "Receiver"
         AlertDialog(
-            onDismissRequest = { paymentToDelete = null },
+            onDismissRequest = { 
+                if (!isDeletingPayment) {
+                    paymentToDelete = null 
+                }
+            },
             shape = HeroCardShape,
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             icon = {
@@ -621,9 +637,14 @@ fun ExpenseListTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deletePayment(payment)
-                        paymentToDelete = null
+                        if (!isDeletingPayment) {
+                            isDeletingPayment = true
+                            viewModel.deletePayment(payment)
+                            paymentToDelete = null
+                            isDeletingPayment = false
+                        }
                     },
+                    enabled = !isDeletingPayment,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
@@ -636,6 +657,7 @@ fun ExpenseListTab(
             dismissButton = {
                 TextButton(
                     onClick = { paymentToDelete = null },
+                    enabled = !isDeletingPayment,
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Cancel")

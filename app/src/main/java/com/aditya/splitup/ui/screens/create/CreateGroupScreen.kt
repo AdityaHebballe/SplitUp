@@ -1,5 +1,6 @@
 package com.aditya.splitup.ui.screens.create
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -42,6 +43,10 @@ fun CreateGroupScreen(
     onGroupCreated: (Long) -> Unit
 ) {
     var currentStep by remember { mutableStateOf(1) }
+    
+    BackHandler(enabled = currentStep > 1) {
+        currentStep--
+    }
     
     val groupName by viewModel.groupName.collectAsStateWithLifecycle()
     val memberNames by viewModel.memberNames.collectAsStateWithLifecycle()

@@ -73,6 +73,17 @@ fun HomeScreen(
     val addExpenseViewModel: AddExpenseViewModel = viewModel()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
+    var lastClickTime by remember { mutableLongStateOf(0L) }
+    val safeNavigate: (() -> Unit) -> Unit = remember {
+        { action ->
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastClickTime >= 500L) {
+                lastClickTime = now
+                action()
+            }
+        }
+    }
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -87,7 +98,7 @@ fun HomeScreen(
                 actions = {
                     // Distinct "Join" button with Key icon and text in TopAppBar
                     FilledTonalButton(
-                        onClick = onNavigateToJoinGroup,
+                        onClick = { safeNavigate { onNavigateToJoinGroup() } },
                         shape = RoundedCornerShape(14.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier.height(38.dp)
@@ -185,7 +196,7 @@ fun HomeScreen(
 
                     // Primary Action: Create a Group
                     Button(
-                        onClick = onNavigateToCreateGroup,
+                        onClick = { safeNavigate { onNavigateToCreateGroup() } },
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -198,7 +209,7 @@ fun HomeScreen(
 
                     // Secondary Action: Join with Invite Code
                     FilledTonalButton(
-                        onClick = onNavigateToJoinGroup,
+                        onClick = { safeNavigate { onNavigateToJoinGroup() } },
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -236,7 +247,7 @@ fun HomeScreen(
                         FilledTonalButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onNavigateToCreateGroup()
+                                safeNavigate { onNavigateToCreateGroup() }
                             },
                             shape = CircleShape,
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
@@ -263,7 +274,7 @@ fun HomeScreen(
                 items(groups, key = { it.id }) { group ->
                     GroupCard(
                         group = group,
-                        onClick = { onNavigateToGroup(group.id) },
+                        onClick = { safeNavigate { onNavigateToGroup(group.id) } },
                         modifier = Modifier.animateItem()
                     )
                 }

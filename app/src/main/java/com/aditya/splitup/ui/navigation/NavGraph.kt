@@ -25,7 +25,22 @@ import com.aditya.splitup.ui.screens.settings.GroupSettingsScreen
 import com.aditya.splitup.ui.screens.settings.GroupSettingsViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.navDeepLink
+import androidx.lifecycle.Lifecycle
 import kotlinx.serialization.Serializable
+
+/**
+ * Google-recommended safe navigation extension:
+ * 1. Checks that the current destination is fully RESUMED before allowing navigation,
+ *    preventing rapid double-tap race conditions from pushing duplicate destinations.
+ * 2. Uses `launchSingleTop = true` to guarantee at most one instance of a destination on the back stack.
+ */
+fun NavHostController.navigateSafely(route: Any) {
+    if (currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
+        navigate(route) {
+            launchSingleTop = true
+        }
+    }
+}
 
 @Serializable
 object HomeRoute
@@ -79,13 +94,13 @@ fun SplitTrackerNavGraph(navController: NavHostController = rememberNavControlle
             HomeScreen(
                 viewModel = viewModel,
                 onNavigateToGroup = { groupId ->
-                    navController.navigate(GroupRoute(groupId))
+                    navController.navigateSafely(GroupRoute(groupId))
                 },
                 onNavigateToCreateGroup = {
-                    navController.navigate(CreateGroupRoute)
+                    navController.navigateSafely(CreateGroupRoute)
                 },
                 onNavigateToJoinGroup = {
-                    navController.navigate(JoinGroupRoute())
+                    navController.navigateSafely(JoinGroupRoute())
                 }
             )
         }
@@ -99,7 +114,7 @@ fun SplitTrackerNavGraph(navController: NavHostController = rememberNavControlle
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToSettings = { groupId ->
-                    navController.navigate(GroupSettingsRoute(groupId))
+                    navController.navigateSafely(GroupSettingsRoute(groupId))
                 }
             )
         }
@@ -126,8 +141,10 @@ fun SplitTrackerNavGraph(navController: NavHostController = rememberNavControlle
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onGroupCreated = { groupId ->
-                    navController.popBackStack()
-                    navController.navigate(GroupRoute(groupId))
+                    navController.navigate(GroupRoute(groupId)) {
+                        popUpTo<CreateGroupRoute> { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -153,8 +170,10 @@ fun SplitTrackerNavGraph(navController: NavHostController = rememberNavControlle
                 initialCode = route.code,
                 onNavigateBack = { navController.popBackStack() },
                 onGroupJoined = { groupId ->
-                    navController.popBackStack()
-                    navController.navigate(GroupRoute(groupId))
+                    navController.navigate(GroupRoute(groupId)) {
+                        popUpTo<JoinGroupRoute> { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
