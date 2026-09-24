@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,12 +122,37 @@ fun BalanceCard(
                         }
                     }
 
-                    // Contextual financial breakdown
-                    Text(
-                        text = "Paid ${CurrencyUtils.formatAmount(totalPaid, currencyCode)} • Share ${CurrencyUtils.formatAmount(totalOwed, currencyCode)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Contextual financial breakdown on separate lines with smaller currency symbol
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = buildAnnotatedString {
+                                append("Paid ")
+                                append(
+                                    CurrencyUtils.formatAmountStyled(
+                                        totalPaid,
+                                        currencyCode,
+                                        symbolColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = buildAnnotatedString {
+                                append("Share ")
+                                append(
+                                    CurrencyUtils.formatAmountStyled(
+                                        totalOwed,
+                                        currencyCode,
+                                        symbolColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -147,6 +173,8 @@ fun BalanceCard(
                     style = AmountStyle,
                     color = statusColor,
                     fontWeight = FontWeight.Bold,
+                    showStyledSymbol = true,
+                    symbolColor = statusColor.copy(alpha = 0.75f),
                     cycle = cycle
                 )
 

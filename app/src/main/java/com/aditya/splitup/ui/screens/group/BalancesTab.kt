@@ -101,20 +101,29 @@ fun BalancesTab(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "Group Total Spent",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         AnimatedAmount(
                             amount = displayedTotal,
                             currencyCode = currentCurrency,
@@ -122,23 +131,27 @@ fun BalancesTab(
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             showStyledSymbol = true,
                             symbolColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                            cycle = balancesCycle
+                            cycle = balancesCycle,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
-                    }
 
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            group?.let { onNavigateToSettleUp(it.id) }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    ) {
-                        Icon(Icons.Default.Payments, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Settle Up")
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                group?.let { onNavigateToSettleUp(it.id) }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Settle Up")
+                        }
                     }
                 }
             }
@@ -559,7 +572,11 @@ fun BalancesTab(
                             color = MaterialTheme.colorScheme.surfaceContainerHigh
                         ) {
                             Text(
-                                text = CurrencyUtils.formatAmount(payment.amount, payment.currency),
+                                text = CurrencyUtils.formatAmountStyled(
+                                    payment.amount,
+                                    payment.currency,
+                                    symbolColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
                                 style = AmountStyle,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
